@@ -169,6 +169,14 @@ async def shuffle(ctx):
         await ctx.send("No hay canciones en cola")
 
 
+@client.command(name="random", aliases=["coin"])
+async def random(ctx):
+    import random
+
+    result = random.choice(["Cara", "Sello"])
+    await ctx.send(f"Resultado: **{result}**")
+
+
 def clean_yt_link(link):
     parsed_link = urlparse(link)
     query_params = {
