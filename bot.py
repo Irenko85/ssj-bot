@@ -2,7 +2,7 @@ import discord
 import os
 import yt_dlp
 import asyncio
-from discord.ext import commands
+from discord.ext import commands, tasks
 from dotenv import load_dotenv
 from urllib.parse import urlparse, parse_qs, urlunparse, urlencode
 
@@ -29,9 +29,14 @@ class SSJBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents)
         self.queue = []
         self.actual_song = None
+        self.is_playing = None
 
     async def on_ready(self):
         print(f"Logged in as {self.user.name}")
+        channel = self.get_channel(
+            884592421575491594
+        )  # ID del canal musica de ~LGTV, cambiar en caso de usar otro servidor
+        self.check_inactivity.start(channel)
 
     async def play_next_in_queue(self, ctx):
         if len(self.queue) > 0:
@@ -43,11 +48,22 @@ class SSJBot(commands.Bot):
                 source,
                 after=lambda _: self.loop.create_task(self.play_next_in_queue(ctx)),
             )
+            self.is_playing = True
             await ctx.send(f"Reproduciendo: **{song['title']}**")
+        else:
+            self.is_playing = False
 
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
+
+    @tasks.loop(seconds=60)
+    async def check_inactivity(self, channel):
+        if not self.is_playing and self.is_playing is not None:
+            print("Bot desconectado por inactividad")
+            self.is_playing = None
+            await channel.send("Bot desconectado por inactividad")
+            await self.voice_clients[0].disconnect()
 
 
 client = SSJBot()
@@ -58,7 +74,7 @@ async def hello(ctx: commands.Context):
     await ctx.send(f"Hola! {ctx.author.mention}")
 
 
-@client.command(name="play")
+@client.command(name="play", aliases=["p"], description="Reproducir una canción")
 async def play(ctx: commands.Context, *, search: str):
     voice_channel = ctx.author.voice.channel if ctx.author.voice else None
 
@@ -105,7 +121,7 @@ async def stop(ctx: commands.Context):
         await ctx.send("Reproducción detenida, CHAO CTM!")
 
 
-@client.command(name="skip")
+@client.command(name="skip", aliases=["s"])
 async def skip(ctx: commands.Context):
     await client.skip(ctx)
 
@@ -167,5 +183,4 @@ def clean_yt_link(link):
 
 
 if __name__ == "__main__":
-    # clean_yt_link("https://www.youtube.com/watch?v=3aevyrmqbY0&list=RDGMEMJQXQAmqrnmK1SEjY_rKBGA&index=3")
     asyncio.run(client.start(os.getenv("DISCORD_TOKEN")))
