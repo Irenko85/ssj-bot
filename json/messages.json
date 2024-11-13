@@ -1,0 +1,97 @@
+{
+    "WelcomeMessage": {
+        "es": "Bienvenid@ al server del bot WCA Notifier",
+        "en": "Welcome to the WCA Notifier bot server!",
+        "pt": "Bem-vindo ao servidor do bot WCA Notifier"
+    },
+    "NewCompetitions": {
+        "es": "se han encontrado nuevos torneos!",
+        "en": "new competitions have been found!",
+        "pt": "novas competições foram encontradas!"
+    },
+    "NoCompetitionFound": {
+        "es": "No se han encontrado competencias.",
+        "en": "No competitions found.",
+        "pt": "Nenhuma competição encontrada."
+    },
+    "CurrentCompetitions": {
+        "es": "Estas son las competencias actuales en",
+        "en": "These are the current competitions in",
+        "pt": "Estas são as competições atuais em"
+    },
+    "Name": {
+        "es": "Nombre:",
+        "en": "Name:",
+        "pt": "Nome:"
+    },
+    "StartDate": {
+        "es": "Fecha de inicio:",
+        "en": "Start date:",
+        "pt": "Data de início:"
+    },
+    "EndDate": {
+        "es": "Fecha de término:",
+        "en": "End date:",
+        "pt": "Data de término:"
+    },
+    "Date": {
+        "es": "Fecha:",
+        "en": "Date:",
+        "pt": "Data:"
+    },
+    "Country": {
+        "es": "País:",
+        "en": "Country:",
+        "pt": "País:"
+    },
+    "Location": {
+        "es": "Lugar:",
+        "en": "Location:",
+        "pt": "Lugar:"
+    },
+    "SetLanguage": {
+        "es": "Se ha cambiado el idioma del bot a español.",
+        "en": "Bot language has been changed to english.",
+        "pt": "O idioma do bot foi alterado para o português."
+    },
+    "SetCountry": {
+        "es": "Se ha cambiado el país por defecto a",
+        "en": "Default country has been changed to",
+        "pt": "O país padrão foi alterado para"
+    },
+    "InvalidCountry": {
+        "es": "No se ha ingresado un país válido.",
+        "en": "Invalid country entered.",
+        "pt": "País inválido inserido."
+    },
+    "First": {
+        "es": "Primera",
+        "en": "First",
+        "pt": "Primeira"
+    },
+    "Previous": {
+        "es": "Anterior",
+        "en": "Previous",
+        "pt": "Anterior"
+    },
+    "Next": {
+        "es": "Siguiente",
+        "en": "Next",
+        "pt": "Próximo"
+    },
+    "Last": {
+        "es": "Última",
+        "en": "Last",
+        "pt": "Última"
+    },
+    "AvailableLanguages": {
+        "es": "Estos son los idiomas disponibles:",
+        "en": "These are the available languages:",
+        "pt": "Estes são os idiomas disponíveis:"
+    },
+    "Languages": {
+        "es": "Español :flag_es:",
+        "en": "English :flag_us:",
+        "pt": "Português :flag_br:"
+    }
+}
