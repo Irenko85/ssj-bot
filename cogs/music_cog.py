@@ -103,7 +103,7 @@ class Music(commands.Cog):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
 
-    @commands.command(name="pause", help="Pauses the current song.")
+    @commands.command(name="pause", aliases=["p"], help="Pauses the current song.")
     async def pause(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
