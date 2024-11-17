@@ -154,7 +154,7 @@ class Music(commands.Cog):
     async def shuffle(self, ctx):
         if len(self.queue) > 0:
             random.shuffle(self.queue)
-            await ctx.send("Aleatorizado la cola.")
+            await ctx.invoke(self.bot.get_command("queue"))
         else:
             await ctx.send("La cola está vacía.")
 
