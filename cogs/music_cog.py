@@ -1,6 +1,7 @@
 import discord
 import yt_dlp
 import random
+from time import time
 from utils import utils
 from discord.ext import commands, tasks
 
@@ -22,13 +23,8 @@ class Music(commands.Cog):
         self.bot = bot
         self.queue = []
         self.actual_song = None
-        self.is_playing = None
         self.inactivity_channel = None  # Channel for inactivity messages
-        self.check_inactivity.start()  # Start checking for inactivity
-
-    def cog_unload(self):
-        # Stop the inactivity check when the cog is unloaded
-        self.check_inactivity.cancel()
+        self.last_activity_timestamp = None
 
     async def play_next_in_queue(self, ctx):
         if len(self.queue) > 0:
@@ -40,10 +36,7 @@ class Music(commands.Cog):
                 source,
                 after=lambda _: self.bot.loop.create_task(self.play_next_in_queue(ctx)),
             )
-            self.is_playing = True
             await ctx.send(f"Reproduciendo: **{song['title']}**")
-        else:
-            self.is_playing = False
 
     async def join_voice_channel(self, ctx):
         if ctx.author.voice:
@@ -82,6 +75,11 @@ class Music(commands.Cog):
                         title = info["title"]
 
                     self.queue.append({"title": title, "url": url})
+                    self.last_activity_timestamp = time()
+                    if not self.check_inactivity.is_running():
+                        self.check_inactivity.start(
+                            ctx
+                        )  # Start checking for inactivity
                     await ctx.send(f"Se agregó a la cola: **{title}**")
                 except Exception as e:
                     await ctx.send(
@@ -121,13 +119,12 @@ class Music(commands.Cog):
         name="queue", aliases=["q"], help="Displays the current song queue."
     )
     async def queue(self, ctx):
-        if len(self.queue) > 0:
+        if self.queue:
             queue_list = "\n".join(
-                [f"**{i+1}. {song['title']}**" for i, song in enumerate(self.queue)]
+                f"{i+1}. {song['title']}" for i, song in enumerate(self.queue)
             )
-
             await ctx.send(
-                f"Reproduciendo: **{self.actual_song}**\nCanciones en cola: **({len(self.queue)})**:\n{queue_list}"
+                f"Reproduciendo: **{self.actual_song}**\nCanciones en cola ({len(self.queue)}):\n**{queue_list}**"
             )
         else:
             await ctx.send("La cola está vacía.")
@@ -136,14 +133,17 @@ class Music(commands.Cog):
         name="rq", help="Removes a song from the queue by its position in the list."
     )
     async def remove_from_queue(self, ctx, position: int):
-        if len(self.queue) > 0:
-            if 0 < position <= len(self.queue):
-                removed = self.queue.pop(position - 1)
-                await ctx.send(f"Se ha eliminado de la cola: **{removed['title']}**")
-            else:
-                await ctx.send("Posición inválida.")
-        else:
+        if not self.queue:
             await ctx.send("La cola está vacía.")
+            return
+
+        try:
+            removed = self.queue.pop(position - 1)
+            await ctx.send(f"Se ha eliminado de la cola: **{removed['title']}**")
+        except IndexError:
+            await ctx.send(
+                "Posición inválida. Asegúrate de que el número esté dentro del rango de la cola."
+            )
 
     @commands.command(name="clear", aliases=["qc"], help="Clears the song queue.")
     async def clear(self, ctx):
@@ -163,17 +163,22 @@ class Music(commands.Cog):
         result = random.choice(["Cara", "Sello"])
         await ctx.send(f"Resultado: **{result}**")
 
-    @tasks.loop(minutes=1)
-    async def check_inactivity(self):
-        for vc in self.bot.voice_clients:
-            if not vc.is_playing() and vc.is_connected():
-                if self.inactivity_channel:
-                    await self.inactivity_channel.send(
-                        "Bot desconectado por inactividad."
-                    )
-                await vc.disconnect()
-                self.is_playing = None
-                print("Bot desconectado por inactividad.")
+    @tasks.loop(seconds=10)
+    async def check_inactivity(self, ctx):
+        INACTIVITY_TIMEOUT = 180
+
+        if not ctx.voice_client or not ctx.voice_client.is_connected():
+            self.check_inactivity.stop()
+            return
+
+        if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
+            self.last_activity_timestamp = time()
+            return
+
+        if time() - self.last_activity_timestamp > INACTIVITY_TIMEOUT:
+            await ctx.voice_client.disconnect()
+            self.check_inactivity.stop()
+            await ctx.send("🛑 Desconectado por inactividad.")
 
 
 async def setup(bot):
