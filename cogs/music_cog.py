@@ -109,7 +109,7 @@ class Music(commands.Cog):
             ctx.voice_client.pause()
             await ctx.send("Se ha pausado la reproducción.")
 
-    @commands.command(name="resume", help="Resumes the paused song.")
+    @commands.command(name="resume", aliases=["r"], help="Resumes the paused song.")
     async def resume(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
