@@ -180,6 +180,127 @@ class Music(commands.Cog):
             self.check_inactivity.stop()
             await ctx.send("🛑 Desconectado por inactividad.")
 
+    @commands.command(name="search", help="Searches for a song on YouTube.")
+    async def search(self, ctx, *, query: str):
+        search_options = YTDL_OPTIONS.copy()
+        search_options.pop("playlist_items", None)  # Remove playlist_items option
+        search_options["extract_flat"] = True  # Extract simple data for optimization
+
+        async with ctx.typing():
+            with yt_dlp.YoutubeDL(search_options) as ydl:
+                try:
+                    info = ydl.extract_info(
+                        f"ytsearch5:{query}", download=False
+                    )  # We use ytsearch5 to get the first 5 results
+                    entries = info.get("entries", [])
+
+                except Exception as e:
+                    await ctx.send("Ocurrió un error al buscar la canción.")
+                    print(f"Error: {e}")
+
+        if not entries:
+            await ctx.send("No se encontraron resultados.")
+            return
+
+        view = SearchView(entries, self, ctx)
+        await ctx.send(view=view)
+
+
+# NOTE FOR THE FUTURE:
+# Ephemeral messages are messages that can only be seen by the user sending them and the bot.
+class SearchSelect(discord.ui.Select):
+    def __init__(self, entries, music_cog, ctx):
+        self.entries = entries
+        self.music_cog = music_cog
+        self.ctx = ctx
+
+        options = [
+            discord.SelectOption(label=entry["title"], value=str(i))
+            for i, entry in enumerate(entries)
+        ]
+        super().__init__(
+            placeholder="Selecciona una canción para reproducir",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        """
+        On this function we need to get the selected song and search more info about it to play it. This is because we optimize the search of the first 5 results to get simpler data.
+        We need to get the video ID and the title of the song to play it. The video ID is used to get the URL of the song and the title is used to show it in the queue.
+        """
+        index = int(self.values[0])
+        selected_entry = self.entries[index]
+        title = selected_entry["title"]
+
+        video_id = selected_entry["id"]
+        if not video_id:
+            await interaction.response.send_message(
+                "No se encontró el ID del video.", ephemeral=True
+            )
+            return
+
+        try:
+            url = f"https://www.youtube.com/watch?v={video_id}"
+            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+                info = ydl.extract_info(url, download=False)
+                url = info["url"]
+        except Exception as e:
+            await interaction.response.send_message(
+                "Error al obtener la URL del video.", ephemeral=True
+            )
+            print(f"Error: {e}")
+            return
+
+        full_url = info.get("url", None)
+        if not full_url:
+            await interaction.response.send_message(
+                "No se encontró la URL del video.", ephemeral=True
+            )
+            return
+
+        self.music_cog.queue.append({"title": title, "url": full_url})
+        await interaction.response.send_message(f"Se agregó a la cola: **{title}**")
+
+        # If the bot is not connected to a voice channel, try to join the user's channel
+        if not self.ctx.voice_client or not self.ctx.voice_client.is_connected():
+            # Check if the user is in a voice channel
+            if self.ctx.author.voice and self.ctx.author.voice.channel:
+                await self.music_cog.join_voice_channel(self.ctx)
+            else:
+                # If the user is not in a voice channel, send an ephemeral message
+                await interaction.followup.send(
+                    "Debes estar en un canal de voz para reproducir la canción.",
+                    ephemeral=True,
+                )
+                return
+
+        # Check if the bot is already playing a song
+        if not self.ctx.voice_client.is_playing():
+            await self.music_cog.play_next_in_queue(
+                self.ctx
+            )  # Play the next song in the queue
+
+        await interaction.message.delete()  # Delete the search message
+        self.stop()  # Stop the select menu
+
+
+class SearchView(discord.ui.View):
+    def __init__(self, entries, music_cog, ctx, timeout=30):
+        super().__init__(timeout=timeout)
+        self.author = ctx.author
+        self.add_item(SearchSelect(entries, music_cog, ctx))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        # Check if the interaction is from the original author of the message
+        if interaction.user != self.author:
+            await interaction.response.send_message(
+                "No puedes interactuar con este menú.", ephemeral=True
+            )
+            return False
+        return True
+
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
