@@ -1,3 +1,4 @@
+import asyncio
 import discord
 import yt_dlp
 import random
@@ -16,6 +17,10 @@ YTDL_OPTIONS = {
     "no_warnings": True,
     "playlist_items": "1",
 }
+
+
+DBZ_PLAYLIST_URL = "https://www.youtube.com/watch_videos?video_ids=YnL70cee6qo,5LVcwPrfNo4,GHja1cUmgsc,k6r8-AhAwmQ,4EPnL5oVnaw,9NXIo6PIb5I,lB3GO22VUPs,VfjKh7pqXNo,buaoMjom9XQ,Ecfux9RTmbY,UFjw-gSLy1w,GHIfsW3SPVk,OB0QCHxzl1s,3aevyrmqbY0,pYnLO7MVKno,uC8sc0cQa9M,8m3fIsHdKg8,y7RLCzAZFtU"
+ANIME_PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLHPZvFJe7-ufMte_SHOhl1qncTTzjpkO7&jct=DyxeqvyCylM2t3X00gNa8g"
 
 
 class Music(commands.Cog):
@@ -50,42 +55,99 @@ class Music(commands.Cog):
             await ctx.send("Necesitas estar en un canal de voz para usar este comando.")
             return False
 
-    @commands.command(name="play", aliases=["p"], description="Play a song")
-    async def play(self, ctx, *, search: str):
-        self.inactivity_channel = (
-            ctx.channel
-        )  # Set the inactivity channel to the current channel
+    async def play_playlist(self, ctx, playlist_url: str, shuffle: bool = False):
+        if not await self.join_voice_channel(ctx):
+            return
+
+        video_urls = utils.get_video_urls_from_playlist(playlist_url)
+        print(f"Video URLs before: {video_urls}")
+        if not video_urls:
+            await ctx.send(f"No se pudo cargar la playlist.")
+            return
+
+        if shuffle:
+            random.shuffle(video_urls)
+            print(f"Video URLs after shuffle: {video_urls}")
+        for url in video_urls:
+            try:
+                await self.play(ctx, search=url, silent=True)
+                # await asyncio.sleep(1)
+            except Exception as e:
+                await ctx.send(f"Error al reproducir una canción de la playlist.")
+                print(f"Error: {e}")
+
+        if not self.check_inactivity.is_running():
+            self.check_inactivity.start(ctx)
+
+        await ctx.send(f"Se agregó la playlist a la cola.")
+
+    @commands.command(name="dbz", help="Reproduce la playlist de Dragon Ball Z")
+    async def dbz(self, ctx):
+        if not await self.join_voice_channel(ctx):
+            return
+
+        await self.play_playlist(ctx, DBZ_PLAYLIST_URL, shuffle=True)
+
+    @commands.command(name="anime", help="Reproduce la playlist de Anime")
+    async def anime(self, ctx):
+        if not await self.join_voice_channel(ctx):
+            return
+
+        await self.play_playlist(ctx, ANIME_PLAYLIST_URL, shuffle=True)
+
+    @commands.command(name="play", aliases=["p"], description="Play a song or playlist")
+    async def play(self, ctx, *, search: str, silent: bool = False):
+        self.inactivity_channel = ctx.channel
         if not await self.join_voice_channel(ctx):
             return
 
         async with ctx.typing():
-            is_url = "youtube.com/watch" in search or "youtu.be" in search
-            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
-                try:
-                    if is_url:
-                        search = utils.clean_yt_link(search)
-                        info = ydl.extract_info(search, download=False)
-                        url = info["url"]
-                        title = info.get("title", "Título no encontrado")
-                    else:
-                        info = ydl.extract_info(f"ytsearch:{search}", download=False)[
-                            "entries"
-                        ][0]
-                        url = info["url"]
-                        title = info["title"]
+            is_url = "youtube.com" in search or "youtu.be" in search
+            is_playlist = "playlist?list=" in search or "&list=" in search
 
-                    self.queue.append({"title": title, "url": url})
-                    self.last_activity_timestamp = time()
-                    if not self.check_inactivity.is_running():
-                        self.check_inactivity.start(
-                            ctx
-                        )  # Start checking for inactivity
-                    await ctx.send(f"Se agregó a la cola: **{title}**")
-                except Exception as e:
+            try:
+                if is_url and is_playlist:
+                    # Is a playlist URL
+                    video_urls = utils.get_video_urls_from_playlist(search)
+                    if not video_urls:
+                        await ctx.send(
+                            "No se pudieron obtener canciones de la playlist."
+                        )
+                        return
+
                     await ctx.send(
-                        "Ocurrió un error al intentar reproducir la canción."
+                        f"Agregando {len(video_urls)} canciones a la cola..."
                     )
-                    print(f"Error: {e}")
+                    await self.play_playlist(ctx, search)
+                else:
+                    # Is a single song URL or search query
+                    with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+                        if is_url:
+                            search = utils.clean_yt_link(search)
+                            info = ydl.extract_info(search, download=False)
+                            url = info["url"]
+                            title = info.get("title", "Título no encontrado")
+                        else:
+                            # Is a search query
+                            info = ydl.extract_info(
+                                f"ytsearch:{search}", download=False
+                            )["entries"][0]
+                            url = info["url"]
+                            title = info["title"]
+
+                        self.queue.append({"title": title, "url": url})
+                        if not silent:
+                            await ctx.send(f"Se agregó a la cola: **{title}**")
+
+            except Exception as e:
+                await ctx.send(
+                    "Ocurrió un error al intentar procesar la canción o playlist."
+                )
+                print(f"Error: {e}")
+
+        self.last_activity_timestamp = time()
+        if not self.check_inactivity.is_running():
+            self.check_inactivity.start(ctx)
 
         if not ctx.voice_client.is_playing():
             await self.play_next_in_queue(ctx)
@@ -102,6 +164,7 @@ class Music(commands.Cog):
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
+            await ctx.send("Se skipeó la canción actual.")
 
     @commands.command(name="pause", help="Pauses the current song.")
     async def pause(self, ctx):

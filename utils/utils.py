@@ -1,5 +1,6 @@
 import json
 import requests
+import yt_dlp
 from bs4 import BeautifulSoup
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs, urlunparse, urlencode
@@ -9,11 +10,37 @@ URL = "https://www.worldcubeassociation.org/competitions?region=Chile&search=&st
 WCA_URL = "https://www.worldcubeassociation.org"
 
 
+def get_video_urls_from_playlist(playlist_url):
+    """
+    Get video URLs from a YouTube playlist using yt-dlp.
+    Args:
+        playlist_url (str): The URL of the YouTube playlist.
+    Returns:
+        list: A list of video URLs in the playlist.
+    """
+    ydl_opts = {
+        "quiet": True,
+        "extract_flat": True,
+        "skip_download": True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        try:
+            info = ydl.extract_info(playlist_url, download=False)
+            return [
+                f"https://www.youtube.com/watch?v={entry['id']}"
+                for entry in info["entries"]
+                if "id" in entry
+            ]
+        except Exception as e:
+            print(f"Error al obtener la playlist: {e}")
+            return []
+
+
 def fetch_tournaments(url: str, country: str) -> list:
     """
     Fetches tournaments from the WCA website based on the specified country.
 
-    Parameters:
+    Args:
     url (str): Base WCA URL.
     country (str): Name or code of the country.
 
@@ -79,7 +106,7 @@ def format_country_for_url(country: str) -> str:
     """
     Formats the country name or code to be URL-compatible for the WCA API.
 
-    Parameters:
+    Args:
     country (str): Country name or code.
 
     Returns:
@@ -124,7 +151,7 @@ def format_country_display(country: str) -> str:
     """
     Returns the display format of a country name.
 
-    Parameters:
+    Args:
     country (str): Country name or code.
 
     Returns:
@@ -139,7 +166,7 @@ def validate_country(country: str) -> bool:
     """
     Checks if the given country exists in the WCA API.
 
-    Parameters:
+    Args:
     country (str): Country name or code.
 
     Returns:
@@ -175,7 +202,7 @@ def translate(language: str, key: str) -> str:
     """
     Returns translated text based on a key and language.
 
-    Parameters:
+    Args:
     language (str): Language code for translation.
     key (str): Translation key.
 
@@ -203,7 +230,7 @@ def validate_language(language: str) -> bool:
     """
     Checks if the given language is available in the translations JSON.
 
-    Parameters:
+    Args:
     language (str): Language code.
 
     Returns:
@@ -215,9 +242,9 @@ def validate_language(language: str) -> bool:
 
 def clean_yt_link(link: str) -> str:
     """
-    Cleans a YouTube link by removing unnecessary query parameters.
+    Cleans a YouTube link by removing unnecessary query Args.
 
-    Parameters:
+    Args:
     link (str): The original YouTube link.
 
     Returns:
