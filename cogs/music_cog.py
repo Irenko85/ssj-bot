@@ -18,7 +18,6 @@ YTDL_OPTIONS = {
     "playlist_items": "1",
 }
 
-
 DBZ_PLAYLIST_URL = "https://www.youtube.com/watch_videos?video_ids=YnL70cee6qo,5LVcwPrfNo4,GHja1cUmgsc,k6r8-AhAwmQ,4EPnL5oVnaw,9NXIo6PIb5I,lB3GO22VUPs,VfjKh7pqXNo,buaoMjom9XQ,Ecfux9RTmbY,UFjw-gSLy1w,GHIfsW3SPVk,OB0QCHxzl1s,3aevyrmqbY0,pYnLO7MVKno,uC8sc0cQa9M,8m3fIsHdKg8,y7RLCzAZFtU"
 ANIME_PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLHPZvFJe7-ufMte_SHOhl1qncTTzjpkO7&jct=DyxeqvyCylM2t3X00gNa8g"
 
@@ -28,8 +27,14 @@ class Music(commands.Cog):
         self.bot = bot
         self.queue = []
         self.actual_song = None
-        self.inactivity_channel = None  # Channel for inactivity messages
+        self.inactivity_channel = None
         self.last_activity_timestamp = None
+        self.inactivity_warned = False  # Flag para evitar spam de warnings
+
+    def update_activity(self):
+        """Actualiza el timestamp de actividad"""
+        self.last_activity_timestamp = time()
+        self.inactivity_warned = False
 
     async def play_next_in_queue(self, ctx):
         if len(self.queue) > 0:
@@ -42,14 +47,17 @@ class Music(commands.Cog):
                 after=lambda _: self.bot.loop.create_task(self.play_next_in_queue(ctx)),
             )
             await ctx.send(f"Reproduciendo: **{song['title']}**")
+            self.update_activity()  # Actualizar actividad al reproducir
 
     async def join_voice_channel(self, ctx):
         if ctx.author.voice:
             channel = ctx.author.voice.channel
             if ctx.voice_client is None or not ctx.voice_client.is_connected():
                 await channel.connect()
+                self.update_activity()  # Actualizar actividad al conectarse
             elif ctx.voice_client.channel != channel:
                 await ctx.voice_client.move_to(channel)
+                self.update_activity()
             return True
         else:
             await ctx.send("Necesitas estar en un canal de voz para usar este comando.")
@@ -68,36 +76,39 @@ class Music(commands.Cog):
         if shuffle:
             random.shuffle(video_urls)
             print(f"Video URLs after shuffle: {video_urls}")
+
         for url in video_urls:
             try:
                 await self.play(ctx, search=url, silent=True)
-                # await asyncio.sleep(1)
             except Exception as e:
                 await ctx.send(f"Error al reproducir una canción de la playlist.")
                 print(f"Error: {e}")
 
+        self.start_inactivity_check(ctx)
+        await ctx.send(f"Se agregó la playlist a la cola.")
+
+    def start_inactivity_check(self, ctx):
+        """Inicia o reinicia el check de inactividad"""
+        self.inactivity_channel = ctx.channel
+        self.update_activity()
+
         if not self.check_inactivity.is_running():
             self.check_inactivity.start(ctx)
-
-        await ctx.send(f"Se agregó la playlist a la cola.")
 
     @commands.command(name="dbz", help="Reproduce la playlist de Dragon Ball Z")
     async def dbz(self, ctx):
         if not await self.join_voice_channel(ctx):
             return
-
         await self.play_playlist(ctx, DBZ_PLAYLIST_URL, shuffle=True)
 
     @commands.command(name="anime", help="Reproduce la playlist de Anime")
     async def anime(self, ctx):
         if not await self.join_voice_channel(ctx):
             return
-
         await self.play_playlist(ctx, ANIME_PLAYLIST_URL, shuffle=True)
 
     @commands.command(name="play", aliases=["p"], description="Play a song or playlist")
     async def play(self, ctx, *, search: str, silent: bool = False):
-        self.inactivity_channel = ctx.channel
         if not await self.join_voice_channel(ctx):
             return
 
@@ -107,7 +118,6 @@ class Music(commands.Cog):
 
             try:
                 if is_url and is_playlist:
-                    # Is a playlist URL
                     video_urls = utils.get_video_urls_from_playlist(search)
                     if not video_urls:
                         await ctx.send(
@@ -120,7 +130,6 @@ class Music(commands.Cog):
                     )
                     await self.play_playlist(ctx, search)
                 else:
-                    # Is a single song URL or search query
                     with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
                         if is_url:
                             search = utils.clean_yt_link(search)
@@ -128,7 +137,6 @@ class Music(commands.Cog):
                             url = info["url"]
                             title = info.get("title", "Título no encontrado")
                         else:
-                            # Is a search query
                             info = ydl.extract_info(
                                 f"ytsearch:{search}", download=False
                             )["entries"][0]
@@ -145,9 +153,7 @@ class Music(commands.Cog):
                 )
                 print(f"Error: {e}")
 
-        self.last_activity_timestamp = time()
-        if not self.check_inactivity.is_running():
-            self.check_inactivity.start(ctx)
+        self.start_inactivity_check(ctx)
 
         if not ctx.voice_client.is_playing():
             await self.play_next_in_queue(ctx)
@@ -160,23 +166,30 @@ class Music(commands.Cog):
             await ctx.voice_client.disconnect()
             await ctx.send("Reproducción detenida. CHAO CTM!")
 
+            # Detener el check de inactividad
+            if self.check_inactivity.is_running():
+                self.check_inactivity.stop()
+
     @commands.command(name="skip", aliases=["s"], help="Skips the current song.")
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
             await ctx.send("Se skipeó la canción actual.")
+            self.update_activity()  # Actualizar actividad al skipear
 
     @commands.command(name="pause", help="Pauses the current song.")
     async def pause(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
             await ctx.send("Se ha pausado la reproducción.")
+            self.update_activity()  # Actualizar actividad al pausar
 
     @commands.command(name="resume", aliases=["r"], help="Resumes the paused song.")
     async def resume(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
             await ctx.send("Se ha reanudado la reproducción.")
+            self.update_activity()  # Actualizar actividad al resumir
 
     @commands.command(
         name="queue", aliases=["q"], help="Displays the current song queue."
@@ -191,6 +204,7 @@ class Music(commands.Cog):
             )
         else:
             await ctx.send("La cola está vacía.")
+        self.update_activity()  # Actualizar actividad al ver la cola
 
     @commands.command(
         name="rq", help="Removes a song from the queue by its position in the list."
@@ -203,6 +217,7 @@ class Music(commands.Cog):
         try:
             removed = self.queue.pop(position - 1)
             await ctx.send(f"Se ha eliminado de la cola: **{removed['title']}**")
+            self.update_activity()  # Actualizar actividad al remover canción
         except IndexError:
             await ctx.send(
                 "Posición inválida. Asegúrate de que el número esté dentro del rango de la cola."
@@ -212,12 +227,14 @@ class Music(commands.Cog):
     async def clear(self, ctx):
         self.queue.clear()
         await ctx.send("La cola se vació.")
+        self.update_activity()  # Actualizar actividad al limpiar cola
 
     @commands.command(name="shuffle", help="Shuffles the song queue.")
     async def shuffle(self, ctx):
         if len(self.queue) > 0:
             random.shuffle(self.queue)
             await ctx.invoke(self.bot.get_command("queue"))
+            self.update_activity()  # Actualizar actividad al mezclar
         else:
             await ctx.send("La cola está vacía.")
 
@@ -226,37 +243,86 @@ class Music(commands.Cog):
         result = random.choice(["Cara", "Sello"])
         await ctx.send(f"Resultado: **{result}**")
 
-    @tasks.loop(seconds=10)
+    @tasks.loop(seconds=15)  # Aumentado a 15 segundos para reducir carga
     async def check_inactivity(self, ctx):
-        INACTIVITY_TIMEOUT = 180
+        INACTIVITY_TIMEOUT = 300  # 5 minutos en lugar de 3
+        WARNING_TIME = 240  # Avisar a los 4 minutos
 
-        if not ctx.voice_client or not ctx.voice_client.is_connected():
+        try:
+            # Verificar si el bot está conectado
+            if not ctx.voice_client or not ctx.voice_client.is_connected():
+                self.check_inactivity.stop()
+                return
+
+            # Si no hay timestamp de actividad, inicializarlo
+            if self.last_activity_timestamp is None:
+                self.update_activity()
+                return
+
+            current_time = time()
+            time_since_activity = current_time - self.last_activity_timestamp
+
+            # Si está reproduciendo, pausado, o hay canciones en cola, considerar como activo
+            if (
+                ctx.voice_client.is_playing()
+                or ctx.voice_client.is_paused()
+                or len(self.queue) > 0
+            ):
+                self.update_activity()
+                return
+
+            # Verificar si hay usuarios en el canal de voz (excluyendo el bot)
+            if ctx.voice_client.channel:
+                members_in_channel = [
+                    member
+                    for member in ctx.voice_client.channel.members
+                    if not member.bot
+                ]
+                if not members_in_channel:
+                    # Si no hay usuarios, desconectar inmediatamente
+                    await ctx.voice_client.disconnect()
+                    self.check_inactivity.stop()
+                    if self.inactivity_channel:
+                        await self.inactivity_channel.send(
+                            "🛑 Desconectado porque no hay usuarios en el canal."
+                        )
+                    return
+
+            # Warning antes de desconectar
+            if time_since_activity > WARNING_TIME and not self.inactivity_warned:
+                self.inactivity_warned = True
+                if self.inactivity_channel:
+                    remaining_time = int(INACTIVITY_TIMEOUT - time_since_activity)
+                    await self.inactivity_channel.send(
+                        f"⚠️ El bot se desconectará en {remaining_time} segundos por inactividad. "
+                        f"Usa cualquier comando de música para mantener la conexión."
+                    )
+
+            # Desconectar por inactividad
+            if time_since_activity > INACTIVITY_TIMEOUT:
+                await ctx.voice_client.disconnect()
+                self.check_inactivity.stop()
+                if self.inactivity_channel:
+                    await self.inactivity_channel.send(
+                        "🛑 Desconectado por inactividad."
+                    )
+
+        except Exception as e:
+            print(f"Error en check_inactivity: {e}")
+            # En caso de error, detener el loop para evitar spam de errores
             self.check_inactivity.stop()
-            return
-
-        if ctx.voice_client.is_playing() or ctx.voice_client.is_paused():
-            self.last_activity_timestamp = time()
-            return
-
-        if time() - self.last_activity_timestamp > INACTIVITY_TIMEOUT:
-            await ctx.voice_client.disconnect()
-            self.check_inactivity.stop()
-            await ctx.send("🛑 Desconectado por inactividad.")
 
     @commands.command(name="search", help="Searches for a song on YouTube.")
     async def search(self, ctx, *, query: str):
         search_options = YTDL_OPTIONS.copy()
-        search_options.pop("playlist_items", None)  # Remove playlist_items option
-        search_options["extract_flat"] = True  # Extract simple data for optimization
+        search_options.pop("playlist_items", None)
+        search_options["extract_flat"] = True
 
         async with ctx.typing():
             with yt_dlp.YoutubeDL(search_options) as ydl:
                 try:
-                    info = ydl.extract_info(
-                        f"ytsearch5:{query}", download=False
-                    )  # We use ytsearch5 to get the first 5 results
+                    info = ydl.extract_info(f"ytsearch5:{query}", download=False)
                     entries = info.get("entries", [])
-
                 except Exception as e:
                     await ctx.send("Ocurrió un error al buscar la canción.")
                     print(f"Error: {e}")
@@ -267,10 +333,9 @@ class Music(commands.Cog):
 
         view = SearchView(entries, self, ctx)
         await ctx.send(view=view)
+        self.update_activity()  # Actualizar actividad al buscar
 
 
-# NOTE FOR THE FUTURE:
-# Ephemeral messages are messages that can only be seen by the user sending them and the bot.
 class SearchSelect(discord.ui.Select):
     def __init__(self, entries, music_cog, ctx):
         self.entries = entries
@@ -289,10 +354,6 @@ class SearchSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        """
-        On this function we need to get the selected song and search more info about it to play it. This is because we optimize the search of the first 5 results to get simpler data.
-        We need to get the video ID and the title of the song to play it. The video ID is used to get the URL of the song and the title is used to show it in the queue.
-        """
         index = int(self.values[0])
         selected_entry = self.entries[index]
         title = selected_entry["title"]
@@ -326,27 +387,24 @@ class SearchSelect(discord.ui.Select):
         self.music_cog.queue.append({"title": title, "url": full_url})
         await interaction.response.send_message(f"Se agregó a la cola: **{title}**")
 
-        # If the bot is not connected to a voice channel, try to join the user's channel
+        # Actualizar actividad al agregar canción
+        self.music_cog.update_activity()
+
         if not self.ctx.voice_client or not self.ctx.voice_client.is_connected():
-            # Check if the user is in a voice channel
             if self.ctx.author.voice and self.ctx.author.voice.channel:
                 await self.music_cog.join_voice_channel(self.ctx)
             else:
-                # If the user is not in a voice channel, send an ephemeral message
                 await interaction.followup.send(
                     "Debes estar en un canal de voz para reproducir la canción.",
                     ephemeral=True,
                 )
                 return
 
-        # Check if the bot is already playing a song
         if not self.ctx.voice_client.is_playing():
-            await self.music_cog.play_next_in_queue(
-                self.ctx
-            )  # Play the next song in the queue
+            await self.music_cog.play_next_in_queue(self.ctx)
 
-        await interaction.message.delete()  # Delete the search message
-        self.stop()  # Stop the select menu
+        await interaction.message.delete()
+        self.stop()
 
 
 class SearchView(discord.ui.View):
@@ -356,7 +414,6 @@ class SearchView(discord.ui.View):
         self.add_item(SearchSelect(entries, music_cog, ctx))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        # Check if the interaction is from the original author of the message
         if interaction.user != self.author:
             await interaction.response.send_message(
                 "No puedes interactuar con este menú.", ephemeral=True
