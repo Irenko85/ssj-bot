@@ -1,22 +1,44 @@
 import asyncio
+import contextlib
 import discord
 import yt_dlp
 import random
+import os
+import logging
+import traceback
 from time import time
 from utils import utils
 from discord.ext import commands, tasks
 
+# Configure logger
+logger = logging.getLogger(__name__)
+
+DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+FFMPEG_BEFORE_OPTIONS = (
+    "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin"
+)
 FFMPEG_OPTIONS = {
-    "options": "-vn",
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "before_options": FFMPEG_BEFORE_OPTIONS,
+    "options": "-vn -b:a 192k -ac 2 -ar 48000",
 }
 YTDL_OPTIONS = {
-    "format": "bestaudio",
+    "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best",
     "noplaylists": True,
     "quiet": True,
     "no_warnings": True,
     "playlist_items": "1",
+    "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
+    "js_runtimes": {"node": {}, "bun": {}},
+    "remote_components": {"ejs:npm"},
 }
+_cookies_file = os.getenv("YTDL_COOKIES")
+if _cookies_file:
+    YTDL_OPTIONS["cookiefile"] = _cookies_file
+else:
+    _cookies_from_browser = os.getenv("YTDL_COOKIES_FROM_BROWSER")
+    if _cookies_from_browser:
+        # Typical values: chrome, edge, brave, firefox
+        YTDL_OPTIONS["cookiesfrombrowser"] = (_cookies_from_browser,)
 
 DBZ_PLAYLIST_URL = "https://www.youtube.com/watch_videos?video_ids=YnL70cee6qo,5LVcwPrfNo4,GHja1cUmgsc,k6r8-AhAwmQ,4EPnL5oVnaw,9NXIo6PIb5I,lB3GO22VUPs,VfjKh7pqXNo,buaoMjom9XQ,Ecfux9RTmbY,UFjw-gSLy1w,GHIfsW3SPVk,OB0QCHxzl1s,3aevyrmqbY0,pYnLO7MVKno,uC8sc0cQa9M,8m3fIsHdKg8,y7RLCzAZFtU"
 ANIME_PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLHPZvFJe7-ufMte_SHOhl1qncTTzjpkO7&jct=DyxeqvyCylM2t3X00gNa8g"
@@ -29,38 +51,181 @@ class Music(commands.Cog):
         self.actual_song = None
         self.inactivity_channel = None
         self.last_activity_timestamp = None
-        self.inactivity_warned = False  # Flag para evitar spam de warnings
+        self.inactivity_warned = False  # Flag to prevent spam warnings
 
     def update_activity(self):
-        """Actualiza el timestamp de actividad"""
+        """Update activity timestamp"""
         self.last_activity_timestamp = time()
         self.inactivity_warned = False
 
+    def _build_before_options(self, headers: dict | None) -> str:
+        """Build ffmpeg options including headers if they exist."""
+        before = FFMPEG_BEFORE_OPTIONS
+        if headers:
+            normalized = {
+                str(k).title(): v for k, v in headers.items() if v is not None
+            }
+            user_agent = normalized.pop("User-Agent", None) or DEFAULT_UA
+            referer = normalized.pop("Referer", None)
+            esc = lambda v: str(v).replace('"', '\\"')
+
+            if user_agent:
+                before = f'{before} -user_agent "{esc(user_agent)}"'
+            if referer:
+                before = f'{before} -referer "{esc(referer)}"'
+
+            if normalized:
+                # ffmpeg expects headers separated by CRLF and with trailing CRLF
+                header_lines = "".join(f"{k}: {v}\r\n" for k, v in normalized.items())
+                header_lines = header_lines.replace('"', '\\"')
+                before = f'{before} -headers "{header_lines}"'
+        else:
+            before = f'{before} -user_agent "{DEFAULT_UA}"'
+        return before
+
+    def _extract_http_headers(
+        self, info: dict, ydl: yt_dlp.YoutubeDL | None
+    ) -> dict | None:
+        """Extract HTTP headers from multiple sources in priority order."""
+        # Header sources in priority order
+        sources = [
+            info.get("http_headers"),
+            next(
+                (
+                    fmt.get("http_headers")
+                    for fmt in info.get("requested_formats", []) or []
+                    if fmt.get("http_headers")
+                ),
+                None,
+            ),
+            next(
+                (
+                    fmt.get("http_headers")
+                    for fmt in info.get("formats", []) or []
+                    if fmt.get("http_headers")
+                ),
+                None,
+            ),
+            ydl.params.get("http_headers") if ydl else None,
+        ]
+
+        # Return the first non-null header
+        return next((h for h in sources if h), None)
+
     async def play_next_in_queue(self, ctx):
+        logger.debug(
+            f"play_next_in_queue llamado, canciones en cola: {len(self.queue)}"
+        )
+
         if len(self.queue) > 0:
+            # Verify that voice_client is available and connected
+            if not ctx.voice_client or not ctx.voice_client.is_connected():
+                logger.error("voice_client no está conectado en play_next_in_queue")
+                await ctx.send("Error: El bot no está conectado a un canal de voz.")
+                return
+
             self.actual_song = self.queue[0]["title"]
             song = self.queue.pop(0)
             url = song["url"]
-            source = await discord.FFmpegOpusAudio.from_probe(url, **FFMPEG_OPTIONS)
-            ctx.voice_client.play(
-                source,
-                after=lambda _: self.bot.loop.create_task(self.play_next_in_queue(ctx)),
-            )
-            await ctx.send(f"Reproduciendo: **{song['title']}**")
-            self.update_activity()  # Actualizar actividad al reproducir
+            logger.debug(f"Preparando reproducción: {song['title']}")
+            logger.debug(
+                f"URL de audio: {url[:100]}..."
+            )  # Show only the first 100 characters
+
+            try:
+                logger.debug("Creando FFmpegOpusAudio source...")
+                before_options = self._build_before_options(song.get("headers"))
+                source = discord.FFmpegOpusAudio(
+                    url,
+                    before_options=before_options,
+                    options=FFMPEG_OPTIONS["options"],
+                )
+                logger.debug("Source creado exitosamente")
+
+                logger.debug("Iniciando reproducción...")
+                ctx.voice_client.play(
+                    source,
+                    after=lambda e: self.bot.loop.create_task(
+                        self._after_play(ctx, e, song["title"])
+                    ),
+                )
+                logger.debug("Reproducción iniciada")
+                await ctx.send(f"Reproduciendo: **{song['title']}**")
+                self.update_activity()  # Update activity when playing
+            except Exception as e:
+                logger.error(
+                    f"Exception en play_next_in_queue: {type(e).__name__}: {e}"
+                )
+                logger.error(traceback.format_exc())
+                await ctx.send(
+                    f"Error al reproducir **{song['title']}**. Intentando con la siguiente canción..."
+                )
+                # Try to play the next song
+                await self.play_next_in_queue(ctx)
+
+    async def _after_play(self, ctx, error, song_title):
+        """Callback que se ejecuta después de que termina una canción"""
+        if error:
+            logger.error(f"Error durante la reproducción de '{song_title}': {error}")
+        else:
+            logger.debug(f"Canción '{song_title}' terminó correctamente")
+        await self.play_next_in_queue(ctx)
 
     async def join_voice_channel(self, ctx):
-        if ctx.author.voice:
-            channel = ctx.author.voice.channel
-            if ctx.voice_client is None or not ctx.voice_client.is_connected():
-                await channel.connect()
-                self.update_activity()  # Actualizar actividad al conectarse
-            elif ctx.voice_client.channel != channel:
-                await ctx.voice_client.move_to(channel)
-                self.update_activity()
-            return True
-        else:
-            await ctx.send("Necesitas estar en un canal de voz para usar este comando.")
+        try:
+            if ctx.author.voice:
+                channel = ctx.author.voice.channel
+                logger.debug(f"Canal objetivo: {channel.name}")
+                logger.debug(f"ctx.voice_client actual: {ctx.voice_client}")
+
+                if ctx.voice_client is None or not ctx.voice_client.is_connected():
+                    logger.debug(f"Conectando al canal de voz: {channel.name}")
+                    try:
+                        voice_client = await channel.connect(
+                            timeout=10.0, reconnect=True
+                        )
+                        logger.debug(
+                            f"Conexión establecida. voice_client: {voice_client}"
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error("Timeout al conectar al canal de voz")
+                        await ctx.send(
+                            "Error: Tiempo de espera agotado al conectar al canal de voz."
+                        )
+                        return False
+                    except Exception as e:
+                        logger.error(f"Error al conectar: {type(e).__name__}: {e}")
+                        logger.error(traceback.format_exc())
+                        await ctx.send(f"Error al conectar al canal de voz: {e}")
+                        return False
+
+                    # Add a small delay to ensure the connection is ready
+                    await asyncio.sleep(0.5)
+                    logger.debug(
+                        f"Conectado exitosamente. voice_client: {ctx.voice_client}"
+                    )
+                    logger.debug(f"is_connected: {ctx.voice_client.is_connected()}")
+                    self.update_activity()  # Update activity when connecting
+                elif ctx.voice_client.channel != channel:
+                    logger.debug(f"Moviendo al canal de voz: {channel.name}")
+                    await ctx.voice_client.move_to(channel)
+                    await asyncio.sleep(0.5)
+                    self.update_activity()  # Update activity when moving
+                else:
+                    logger.debug(f"Ya está conectado al canal: {channel.name}")
+
+                logger.debug("join_voice_channel completado exitosamente")
+                return True
+            else:
+                logger.debug("El usuario no está en un canal de voz")
+                await ctx.send(
+                    "Necesitas estar en un canal de voz para usar este comando."
+                )
+                return False
+        except Exception as e:
+            logger.error(f"Exception en join_voice_channel: {type(e).__name__}: {e}")
+            logger.error(traceback.format_exc())
+            await ctx.send(f"Error inesperado al unirse al canal de voz.")
             return False
 
     async def play_playlist(self, ctx, playlist_url: str, shuffle: bool = False):
@@ -68,32 +233,36 @@ class Music(commands.Cog):
             return
 
         video_urls = utils.get_video_urls_from_playlist(playlist_url)
-        print(f"Video URLs before: {video_urls}")
+        logger.debug(f"Video URLs before: {video_urls}")
         if not video_urls:
             await ctx.send(f"No se pudo cargar la playlist.")
             return
 
         if shuffle:
             random.shuffle(video_urls)
-            print(f"Video URLs after shuffle: {video_urls}")
+            logger.debug(f"Video URLs after shuffle: {video_urls}")
 
         for url in video_urls:
             try:
                 await self.play(ctx, search=url, silent=True)
             except Exception as e:
                 await ctx.send(f"Error al reproducir una canción de la playlist.")
-                print(f"Error: {e}")
+                logger.error(f"Error reproduciendo playlist: {e}")
 
         self.start_inactivity_check(ctx)
         await ctx.send(f"Se agregó la playlist a la cola.")
 
     def start_inactivity_check(self, ctx):
         """Inicia o reinicia el check de inactividad"""
+        logger.debug("start_inactivity_check llamado")
         self.inactivity_channel = ctx.channel
         self.update_activity()
 
         if not self.check_inactivity.is_running():
+            logger.debug("Iniciando check_inactivity loop")
             self.check_inactivity.start(ctx)
+        else:
+            logger.debug("check_inactivity ya está corriendo")
 
     @commands.command(name="dbz", help="Reproduce la playlist de Dragon Ball Z")
     async def dbz(self, ctx):
@@ -109,15 +278,32 @@ class Music(commands.Cog):
 
     @commands.command(name="play", aliases=["p"], description="Play a song or playlist")
     async def play(self, ctx, *, search: str, silent: bool = False):
-        if not await self.join_voice_channel(ctx):
+        try:
+            logger.debug(f"Comando play ejecutado con search: {search}")
+            join_result = await self.join_voice_channel(ctx)
+            logger.debug(f"join_voice_channel retornó: {join_result}")
+
+            if not join_result:
+                logger.debug("No se pudo unir al canal de voz")
+                return
+
+            logger.debug(
+                f"Bot conectado al canal de voz: {ctx.voice_client.channel.name}"
+            )
+        except Exception as e:
+            logger.error(f"Exception al inicio de play(): {type(e).__name__}: {e}")
+            logger.error(traceback.format_exc())
+            await ctx.send("Error al iniciar la reproducción.")
             return
 
         async with ctx.typing():
             is_url = "youtube.com" in search or "youtu.be" in search
             is_playlist = "playlist?list=" in search or "&list=" in search
+            logger.debug(f"is_url: {is_url}, is_playlist: {is_playlist}")
 
             try:
                 if is_url and is_playlist:
+                    logger.debug("Procesando playlist...")
                     video_urls = utils.get_video_urls_from_playlist(search)
                     if not video_urls:
                         await ctx.send(
@@ -130,33 +316,116 @@ class Music(commands.Cog):
                     )
                     await self.play_playlist(ctx, search)
                 else:
+                    logger.debug("Procesando video individual...")
                     with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
                         if is_url:
+                            logger.debug(f"Limpiando URL: {search}")
                             search = utils.clean_yt_link(search)
-                            info = ydl.extract_info(search, download=False)
+                            logger.debug(f"URL limpio: {search}")
+                            logger.debug("Extrayendo información del video...")
+                            try:
+                                info = ydl.extract_info(search, download=False)
+                            except yt_dlp.utils.DownloadError as e:
+                                if "Requested format is not available" in str(e):
+                                    logger.warning(
+                                        "Format no disponible, reintentando con format=best"
+                                    )
+                                    fallback_opts = YTDL_OPTIONS.copy()
+                                    fallback_opts["format"] = "best"
+                                    with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
+                                        info = ydl_fb.extract_info(
+                                            search, download=False
+                                        )
+                                else:
+                                    raise
                             url = info["url"]
                             title = info.get("title", "Título no encontrado")
+                            headers = self._extract_http_headers(info, ydl)
+                            logger.debug(f"Video extraído: {title}")
                         else:
-                            info = ydl.extract_info(
-                                f"ytsearch:{search}", download=False
-                            )["entries"][0]
+                            logger.debug(f"Buscando en YouTube: {search}")
+                            search_opts = YTDL_OPTIONS.copy()
+                            search_opts["extract_flat"] = True
+                            search_opts["skip_download"] = True
+                            with yt_dlp.YoutubeDL(search_opts) as ydl_search:
+                                search_info = ydl_search.extract_info(
+                                    f"ytsearch5:{search}", download=False
+                                )
+                            entries = search_info.get("entries") or []
+                            if not entries:
+                                await ctx.send("No se encontraron resultados.")
+                                return
+
+                            info = None
+                            for entry in entries:
+                                video_id = entry.get("id") or entry.get("url")
+                                if not video_id:
+                                    continue
+                                candidate_url = (
+                                    f"https://www.youtube.com/watch?v={video_id}"
+                                )
+                                try:
+                                    info = ydl.extract_info(
+                                        candidate_url, download=False
+                                    )
+                                    break
+                                except yt_dlp.utils.DownloadError as e:
+                                    if "Requested format is not available" in str(e):
+                                        logger.warning(
+                                            f"Format no disponible para {video_id}, probando otro resultado"
+                                        )
+                                        continue
+                                    raise
+
+                            if not info:
+                                await ctx.send(
+                                    "No se encontró un formato compatible para los resultados."
+                                )
+                                return
+
                             url = info["url"]
                             title = info["title"]
+                            headers = self._extract_http_headers(info, ydl)
+                            logger.debug(f"Video encontrado: {title}")
 
-                        self.queue.append({"title": title, "url": url})
+                        logger.debug(f"Agregando a la cola: {title}")
+                        self.queue.append(
+                            {"title": title, "url": url, "headers": headers}
+                        )
                         if not silent:
+                            logger.debug("Enviando mensaje de confirmación...")
                             await ctx.send(f"Se agregó a la cola: **{title}**")
+                            logger.debug("Mensaje enviado")
 
             except Exception as e:
+                logger.error(f"Exception en play(): {type(e).__name__}: {e}")
+                logger.error(traceback.format_exc())
                 await ctx.send(
                     "Ocurrió un error al intentar procesar la canción o playlist."
                 )
-                print(f"Error: {e}")
+                logger.debug("Mensaje de error enviado al chat")
 
         self.start_inactivity_check(ctx)
 
-        if not ctx.voice_client.is_playing():
-            await self.play_next_in_queue(ctx)
+        logger.debug("Verificando estado del voice_client antes de reproducir...")
+        logger.debug(f"voice_client: {ctx.voice_client}")
+        logger.debug(
+            f"is_connected: {ctx.voice_client.is_connected() if ctx.voice_client else 'N/A'}"
+        )
+        logger.debug(
+            f"is_playing: {ctx.voice_client.is_playing() if ctx.voice_client else 'N/A'}"
+        )
+        logger.debug(f"Queue length: {len(self.queue)}")
+
+        if ctx.voice_client and ctx.voice_client.is_connected():
+            if not ctx.voice_client.is_playing():
+                logger.debug("Iniciando reproducción desde la cola...")
+                await self.play_next_in_queue(ctx)
+            else:
+                logger.debug("Ya hay una canción reproduciéndose")
+        else:
+            logger.error("voice_client no está conectado después de join_voice_channel")
+            await ctx.send("Error: No se pudo establecer conexión con el canal de voz.")
 
     @commands.command(name="stop", help="Stops playback and leaves the voice channel.")
     async def stop(self, ctx):
@@ -165,8 +434,10 @@ class Music(commands.Cog):
             ctx.voice_client.stop()
             await ctx.voice_client.disconnect()
             await ctx.send("Reproducción detenida. CHAO CTM!")
+            if self._ffmpeg_log_fp and not self._ffmpeg_log_fp.closed:
+                self._ffmpeg_log_fp.close()
 
-            # Detener el check de inactividad
+            # Stop inactivity check
             if self.check_inactivity.is_running():
                 self.check_inactivity.stop()
 
@@ -175,21 +446,21 @@ class Music(commands.Cog):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
             await ctx.send("Se skipeó la canción actual.")
-            self.update_activity()  # Actualizar actividad al skipear
+            self.update_activity()  # Update activity when skipping
 
     @commands.command(name="pause", help="Pauses the current song.")
     async def pause(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
             await ctx.send("Se ha pausado la reproducción.")
-            self.update_activity()  # Actualizar actividad al pausar
+            self.update_activity()  # Update activity when pausing
 
     @commands.command(name="resume", aliases=["r"], help="Resumes the paused song.")
     async def resume(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
             await ctx.send("Se ha reanudado la reproducción.")
-            self.update_activity()  # Actualizar actividad al resumir
+            self.update_activity()  # Update activity when resuming
 
     @commands.command(
         name="queue", aliases=["q"], help="Displays the current song queue."
@@ -197,14 +468,14 @@ class Music(commands.Cog):
     async def queue(self, ctx):
         if self.queue:
             queue_list = "\n".join(
-                f"{i+1}. {song['title']}" for i, song in enumerate(self.queue)
+                f"{i + 1}. {song['title']}" for i, song in enumerate(self.queue)
             )
             await ctx.send(
                 f"Reproduciendo: **{self.actual_song}**\nCanciones en cola ({len(self.queue)}):\n**{queue_list}**"
             )
         else:
             await ctx.send("La cola está vacía.")
-        self.update_activity()  # Actualizar actividad al ver la cola
+        self.update_activity()  # Update activity when viewing queue
 
     @commands.command(
         name="rq", help="Removes a song from the queue by its position in the list."
@@ -217,7 +488,7 @@ class Music(commands.Cog):
         try:
             removed = self.queue.pop(position - 1)
             await ctx.send(f"Se ha eliminado de la cola: **{removed['title']}**")
-            self.update_activity()  # Actualizar actividad al remover canción
+            self.update_activity()  # Update activity when removing song
         except IndexError:
             await ctx.send(
                 "Posición inválida. Asegúrate de que el número esté dentro del rango de la cola."
@@ -227,14 +498,14 @@ class Music(commands.Cog):
     async def clear(self, ctx):
         self.queue.clear()
         await ctx.send("La cola se vació.")
-        self.update_activity()  # Actualizar actividad al limpiar cola
+        self.update_activity()  # Update activity when clearing queue
 
     @commands.command(name="shuffle", help="Shuffles the song queue.")
     async def shuffle(self, ctx):
         if len(self.queue) > 0:
             random.shuffle(self.queue)
             await ctx.invoke(self.bot.get_command("queue"))
-            self.update_activity()  # Actualizar actividad al mezclar
+            self.update_activity()  # Update activity when shuffling
         else:
             await ctx.send("La cola está vacía.")
 
@@ -243,18 +514,22 @@ class Music(commands.Cog):
         result = random.choice(["Cara", "Sello"])
         await ctx.send(f"Resultado: **{result}**")
 
-    @tasks.loop(seconds=15)  # Aumentado a 15 segundos para reducir carga
+    @tasks.loop(seconds=15)  # Increased to 15 seconds to reduce load
     async def check_inactivity(self, ctx):
-        INACTIVITY_TIMEOUT = 300  # 5 minutos en lugar de 3
-        WARNING_TIME = 240  # Avisar a los 4 minutos
+        INACTIVITY_TIMEOUT = 300  # 5 minutes instead of 3
+        WARNING_TIME = 240  # Warn at 4 minutes
 
         try:
-            # Verificar si el bot está conectado
+            logger.debug("check_inactivity ejecutándose...")
+            # Check if bot is connected
             if not ctx.voice_client or not ctx.voice_client.is_connected():
+                logger.debug(
+                    "check_inactivity: voice_client no conectado, deteniendo loop"
+                )
                 self.check_inactivity.stop()
                 return
 
-            # Si no hay timestamp de actividad, inicializarlo
+            # If no activity timestamp, initialize it
             if self.last_activity_timestamp is None:
                 self.update_activity()
                 return
@@ -262,7 +537,7 @@ class Music(commands.Cog):
             current_time = time()
             time_since_activity = current_time - self.last_activity_timestamp
 
-            # Si está reproduciendo, pausado, o hay canciones en cola, considerar como activo
+            # If playing, paused, or has songs in queue, consider as active
             if (
                 ctx.voice_client.is_playing()
                 or ctx.voice_client.is_paused()
@@ -271,7 +546,7 @@ class Music(commands.Cog):
                 self.update_activity()
                 return
 
-            # Verificar si hay usuarios en el canal de voz (excluyendo el bot)
+            # Check if there are users in the voice channel (excluding bot)
             if ctx.voice_client.channel:
                 members_in_channel = [
                     member
@@ -279,7 +554,7 @@ class Music(commands.Cog):
                     if not member.bot
                 ]
                 if not members_in_channel:
-                    # Si no hay usuarios, desconectar inmediatamente
+                    # If no users, disconnect immediately
                     await ctx.voice_client.disconnect()
                     self.check_inactivity.stop()
                     if self.inactivity_channel:
@@ -288,7 +563,7 @@ class Music(commands.Cog):
                         )
                     return
 
-            # Warning antes de desconectar
+            # Warning before disconnecting
             if time_since_activity > WARNING_TIME and not self.inactivity_warned:
                 self.inactivity_warned = True
                 if self.inactivity_channel:
@@ -298,7 +573,7 @@ class Music(commands.Cog):
                         f"Usa cualquier comando de música para mantener la conexión."
                     )
 
-            # Desconectar por inactividad
+            # Disconnect due to inactivity
             if time_since_activity > INACTIVITY_TIMEOUT:
                 await ctx.voice_client.disconnect()
                 self.check_inactivity.stop()
@@ -308,8 +583,8 @@ class Music(commands.Cog):
                     )
 
         except Exception as e:
-            print(f"Error en check_inactivity: {e}")
-            # En caso de error, detener el loop para evitar spam de errores
+            logger.error(f"Error en check_inactivity: {e}")
+            # In case of error, stop the loop to prevent error spam
             self.check_inactivity.stop()
 
     @commands.command(name="search", help="Searches for a song on YouTube.")
@@ -325,7 +600,7 @@ class Music(commands.Cog):
                     entries = info.get("entries", [])
                 except Exception as e:
                     await ctx.send("Ocurrió un error al buscar la canción.")
-                    print(f"Error: {e}")
+                    logger.error(f"Error en search: {e}")
 
         if not entries:
             await ctx.send("No se encontraron resultados.")
@@ -333,7 +608,7 @@ class Music(commands.Cog):
 
         view = SearchView(entries, self, ctx)
         await ctx.send(view=view)
-        self.update_activity()  # Actualizar actividad al buscar
+        self.update_activity()  # Update activity when searching
 
 
 class SearchSelect(discord.ui.Select):
@@ -370,11 +645,12 @@ class SearchSelect(discord.ui.Select):
             with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
                 info = ydl.extract_info(url, download=False)
                 url = info["url"]
+                headers = self.music_cog._extract_http_headers(info, ydl)
         except Exception as e:
             await interaction.response.send_message(
                 "Error al obtener la URL del video.", ephemeral=True
             )
-            print(f"Error: {e}")
+            logger.error(f"Error obteniendo URL en SearchSelect: {e}")
             return
 
         full_url = info.get("url", None)
@@ -384,10 +660,12 @@ class SearchSelect(discord.ui.Select):
             )
             return
 
-        self.music_cog.queue.append({"title": title, "url": full_url})
+        self.music_cog.queue.append(
+            {"title": title, "url": full_url, "headers": headers}
+        )
         await interaction.response.send_message(f"Se agregó a la cola: **{title}**")
 
-        # Actualizar actividad al agregar canción
+        # Update activity when adding song
         self.music_cog.update_activity()
 
         if not self.ctx.voice_client or not self.ctx.voice_client.is_connected():

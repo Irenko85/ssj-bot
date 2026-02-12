@@ -3,12 +3,16 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 from db import db
+from keep_alive import keep_alive
 
 # Load environment variables from the .env file
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GUILD_ID = int(os.getenv("GUILD_ID"))  # Discord server ID, if required
 TOURNAMENTS_CHANNEL_ID = int(os.getenv("TOURNAMENTS_CHANNEL_ID"))
+
+# Start the keep-alive server to prevent the bot from sleeping on Render
+keep_alive()
 
 # Set intents to receive message content and member events
 intents = discord.Intents.all()
