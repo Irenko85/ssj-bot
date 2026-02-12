@@ -73,6 +73,12 @@ if _cookies_file:
             os.chmod(_tmp_cookies, 0o644)
             YTDL_OPTIONS["cookiefile"] = _tmp_cookies
             print(f"[INIT] SUCCESS: Cookies copied to {_tmp_cookies}", flush=True)
+
+            # Verify the file was copied correctly
+            import subprocess
+            result = subprocess.run(['wc', '-l', _tmp_cookies], capture_output=True, text=True)
+            print(f"[INIT] Cookies file has {result.stdout.strip()} lines", flush=True)
+
             logger.info(f"Cookies copied to writable location: {_tmp_cookies}")
             logger.info(f"YTDL_OPTIONS['cookiefile'] = {YTDL_OPTIONS.get('cookiefile')}")
         except Exception as e:
@@ -379,7 +385,9 @@ class Music(commands.Cog):
                     await self.play_playlist(ctx, search)
                 else:
                     logger.debug("Procesando video individual...")
+                    logger.debug(f"YTDL_OPTIONS cookiefile: {YTDL_OPTIONS.get('cookiefile')}")
                     with SafeYoutubeDL(YTDL_OPTIONS) as ydl:
+                        logger.debug(f"YoutubeDL instance cookiefile: {ydl.params.get('cookiefile')}")
                         if is_url:
                             logger.debug(f"Limpiando URL: {search}")
                             search = utils.clean_yt_link(search)
