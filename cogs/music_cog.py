@@ -27,18 +27,37 @@ YTDL_OPTIONS = {
     "quiet": True,
     "no_warnings": True,
     "playlist_items": "1",
-    "extractor_args": {"youtube": {"player_client": ["ios", "android", "web"]}},
+    "extractor_args": {"youtube": {"player_client": ["web", "ios", "android"]}},
     "js_runtimes": {"node": {}, "bun": {}},
     "remote_components": {"ejs:npm"},
+    "user_agent": DEFAULT_UA,
+    "referer": "https://www.youtube.com/",
+    "headers": {
+        "User-Agent": DEFAULT_UA,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    },
 }
 _cookies_file = os.getenv("YTDL_COOKIES")
 if _cookies_file:
-    YTDL_OPTIONS["cookiefile"] = _cookies_file
+    if os.path.exists(_cookies_file):
+        logger.info(f"Loading cookies from: {_cookies_file}")
+        YTDL_OPTIONS["cookiefile"] = _cookies_file
+    else:
+        logger.error(f"Cookies file not found: {_cookies_file}")
 else:
+    logger.warning("YTDL_COOKIES not set, trying YTDL_COOKIES_FROM_BROWSER...")
     _cookies_from_browser = os.getenv("YTDL_COOKIES_FROM_BROWSER")
     if _cookies_from_browser:
+        logger.info(f"Using cookies from browser: {_cookies_from_browser}")
         # Typical values: chrome, edge, brave, firefox
         YTDL_OPTIONS["cookiesfrombrowser"] = (_cookies_from_browser,)
+    else:
+        logger.warning("No cookies configured. YouTube may require authentication.")
 
 DBZ_PLAYLIST_URL = "https://www.youtube.com/watch_videos?video_ids=YnL70cee6qo,5LVcwPrfNo4,GHja1cUmgsc,k6r8-AhAwmQ,4EPnL5oVnaw,9NXIo6PIb5I,lB3GO22VUPs,VfjKh7pqXNo,buaoMjom9XQ,Ecfux9RTmbY,UFjw-gSLy1w,GHIfsW3SPVk,OB0QCHxzl1s,3aevyrmqbY0,pYnLO7MVKno,uC8sc0cQa9M,8m3fIsHdKg8,y7RLCzAZFtU"
 ANIME_PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLHPZvFJe7-ufMte_SHOhl1qncTTzjpkO7&jct=DyxeqvyCylM2t3X00gNa8g"
