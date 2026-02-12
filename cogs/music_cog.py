@@ -75,9 +75,10 @@ if _cookies_file:
             print(f"[INIT] SUCCESS: Cookies copied to {_tmp_cookies}", flush=True)
 
             # Verify the file was copied correctly
-            import subprocess
-            result = subprocess.run(['wc', '-l', _tmp_cookies], capture_output=True, text=True)
-            print(f"[INIT] Cookies file has {result.stdout.strip()} lines", flush=True)
+            with open(_tmp_cookies, 'r') as f:
+                lines = f.readlines()
+                cookie_count = sum(1 for line in lines if line.strip() and not line.startswith('#'))
+                print(f"[INIT] Cookies file has {len(lines)} lines total, {cookie_count} actual cookies", flush=True)
 
             logger.info(f"Cookies copied to writable location: {_tmp_cookies}")
             logger.info(f"YTDL_OPTIONS['cookiefile'] = {YTDL_OPTIONS.get('cookiefile')}")
