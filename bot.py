@@ -58,9 +58,16 @@ async def load_cogs():
 
 # Run the bot
 if __name__ == "__main__":
+    import sys
+    # Disable stdout buffering to see logs immediately
+    sys.stdout.reconfigure(line_buffering=True)
+
+    print("[BOT] Starting bot...", flush=True)
 
     async def main():
+        print("[BOT] Loading cogs...", flush=True)
         await load_cogs()  # Load all cogs before starting the bot
+        print("[BOT] Cogs loaded successfully", flush=True)
         await bot.start(TOKEN)
 
     import asyncio

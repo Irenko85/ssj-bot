@@ -59,11 +59,11 @@ class SafeYoutubeDL(yt_dlp.YoutubeDL):
 
 
 _cookies_file = os.getenv("YTDL_COOKIES")
-print(f"[INIT] YTDL_COOKIES env var: {_cookies_file}")  # Debug print
+print(f"[INIT] YTDL_COOKIES env var: {_cookies_file}", flush=True)  # Debug print
 if _cookies_file:
-    print(f"[INIT] Checking if cookies file exists: {_cookies_file}")
+    print(f"[INIT] Checking if cookies file exists: {_cookies_file}", flush=True)
     if os.path.exists(_cookies_file):
-        print(f"[INIT] Cookies file found! Loading from: {_cookies_file}")
+        print(f"[INIT] Cookies file found! Loading from: {_cookies_file}", flush=True)
         logger.info(f"Loading cookies from: {_cookies_file}")
         # Copy to /tmp so yt-dlp can write updates (cookies expire)
         _tmp_cookies = "/tmp/cookies.txt"
@@ -72,26 +72,26 @@ if _cookies_file:
             # Ensure the file is readable and writable
             os.chmod(_tmp_cookies, 0o644)
             YTDL_OPTIONS["cookiefile"] = _tmp_cookies
-            print(f"[INIT] SUCCESS: Cookies copied to {_tmp_cookies}")
+            print(f"[INIT] SUCCESS: Cookies copied to {_tmp_cookies}", flush=True)
             logger.info(f"Cookies copied to writable location: {_tmp_cookies}")
             logger.info(f"YTDL_OPTIONS['cookiefile'] = {YTDL_OPTIONS.get('cookiefile')}")
         except Exception as e:
-            print(f"[INIT] ERROR: Failed to copy cookies: {e}")
+            print(f"[INIT] ERROR: Failed to copy cookies: {e}", flush=True)
             logger.error(f"Failed to copy cookies to /tmp: {e}")
             logger.error(traceback.format_exc())
             # Don't use read-only file - SafeYoutubeDL will handle missing cookies
             logger.warning("Proceeding without cookies due to copy failure")
     else:
-        print(f"[INIT] ERROR: Cookies file NOT found at {_cookies_file}")
+        print(f"[INIT] ERROR: Cookies file NOT found at {_cookies_file}", flush=True)
         logger.error(f"Cookies file not found: {_cookies_file}")
         # List files in /etc/secrets to debug
         try:
             secrets_files = os.listdir("/etc/secrets")
-            print(f"[INIT] Files in /etc/secrets: {secrets_files}")
+            print(f"[INIT] Files in /etc/secrets: {secrets_files}", flush=True)
         except Exception as e:
-            print(f"[INIT] Could not list /etc/secrets: {e}")
+            print(f"[INIT] Could not list /etc/secrets: {e}", flush=True)
 else:
-    print("[INIT] YTDL_COOKIES env var not set")
+    print("[INIT] YTDL_COOKIES env var not set", flush=True)
     logger.warning("YTDL_COOKIES not set, trying YTDL_COOKIES_FROM_BROWSER...")
     _cookies_from_browser = os.getenv("YTDL_COOKIES_FROM_BROWSER")
     if _cookies_from_browser:
@@ -99,7 +99,7 @@ else:
         # Typical values: chrome, edge, brave, firefox
         YTDL_OPTIONS["cookiesfrombrowser"] = (_cookies_from_browser,)
     else:
-        print("[INIT] No cookies configured at all!")
+        print("[INIT] No cookies configured at all!", flush=True)
         logger.warning("No cookies configured. YouTube may require authentication.")
 
 DBZ_PLAYLIST_URL = "https://www.youtube.com/watch_videos?video_ids=YnL70cee6qo,5LVcwPrfNo4,GHja1cUmgsc,k6r8-AhAwmQ,4EPnL5oVnaw,9NXIo6PIb5I,lB3GO22VUPs,VfjKh7pqXNo,buaoMjom9XQ,Ecfux9RTmbY,UFjw-gSLy1w,GHIfsW3SPVk,OB0QCHxzl1s,3aevyrmqbY0,pYnLO7MVKno,uC8sc0cQa9M,8m3fIsHdKg8,y7RLCzAZFtU"
