@@ -6,6 +6,7 @@ import random
 import os
 import logging
 import traceback
+import shutil
 from time import time
 from utils import utils
 from discord.ext import commands, tasks
@@ -46,7 +47,15 @@ _cookies_file = os.getenv("YTDL_COOKIES")
 if _cookies_file:
     if os.path.exists(_cookies_file):
         logger.info(f"Loading cookies from: {_cookies_file}")
-        YTDL_OPTIONS["cookiefile"] = _cookies_file
+        # Copy to /tmp so yt-dlp can write updates (cookies expire)
+        _tmp_cookies = "/tmp/cookies.txt"
+        try:
+            shutil.copy(_cookies_file, _tmp_cookies)
+            YTDL_OPTIONS["cookiefile"] = _tmp_cookies
+            logger.info(f"Cookies copied to writable location: {_tmp_cookies}")
+        except Exception as e:
+            logger.error(f"Failed to copy cookies to /tmp: {e}")
+            YTDL_OPTIONS["cookiefile"] = _cookies_file
     else:
         logger.error(f"Cookies file not found: {_cookies_file}")
 else:
