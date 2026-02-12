@@ -14,7 +14,7 @@ from discord.ext import commands, tasks
 # Configure logger
 logger = logging.getLogger(__name__)
 
-DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 FFMPEG_BEFORE_OPTIONS = (
     "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin"
 )
@@ -28,19 +28,26 @@ YTDL_OPTIONS = {
     "quiet": True,
     "no_warnings": True,
     "playlist_items": "1",
-    "extractor_args": {"youtube": {"player_client": ["web", "ios", "android"]}},
-    "js_runtimes": {"node": {}, "bun": {}},
-    "remote_components": {"ejs:npm"},
+    "extractor_args": {"youtube": {"player_client": ["web"]}},
     "user_agent": DEFAULT_UA,
     "referer": "https://www.youtube.com/",
+    "http_chunk_size": 10485760,
     "headers": {
         "User-Agent": DEFAULT_UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
         "DNT": "1",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Cache-Control": "max-age=0",
     },
 }
 
@@ -79,6 +86,10 @@ if _cookies_file:
                 lines = f.readlines()
                 cookie_count = sum(1 for line in lines if line.strip() and not line.startswith('#'))
                 print(f"[INIT] Cookies file has {len(lines)} lines total, {cookie_count} actual cookies", flush=True)
+                # Check for important YouTube cookies
+                important_cookies = ['SID', 'HSID', 'SSID', 'APISID', 'SAPISID']
+                found_cookies = [cookie for cookie in important_cookies if any(cookie in line for line in lines)]
+                print(f"[INIT] Found important cookies: {found_cookies}", flush=True)
 
             logger.info(f"Cookies copied to writable location: {_tmp_cookies}")
             logger.info(f"YTDL_OPTIONS['cookiefile'] = {YTDL_OPTIONS.get('cookiefile')}")
@@ -387,7 +398,15 @@ class Music(commands.Cog):
                 else:
                     logger.debug("Procesando video individual...")
                     logger.debug(f"YTDL_OPTIONS cookiefile: {YTDL_OPTIONS.get('cookiefile')}")
-                    with SafeYoutubeDL(YTDL_OPTIONS) as ydl:
+
+                    # Enable verbose logging for first extraction to debug
+                    debug_opts = YTDL_OPTIONS.copy()
+                    if not hasattr(self, '_verbose_logged'):
+                        debug_opts['verbose'] = True
+                        self._verbose_logged = True
+                        logger.info("Enabling verbose yt-dlp logging for first extraction")
+
+                    with SafeYoutubeDL(debug_opts) as ydl:
                         logger.debug(f"YoutubeDL instance cookiefile: {ydl.params.get('cookiefile')}")
                         if is_url:
                             logger.debug(f"Limpiando URL: {search}")
