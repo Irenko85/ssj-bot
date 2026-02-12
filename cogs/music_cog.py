@@ -43,6 +43,21 @@ YTDL_OPTIONS = {
         "Upgrade-Insecure-Requests": "1",
     },
 }
+
+
+class SafeYoutubeDL(yt_dlp.YoutubeDL):
+    """Wrapper that prevents cookie saving errors on read-only filesystems"""
+
+    def close(self):
+        try:
+            super().close()
+        except OSError as e:
+            if "Read-only file system" in str(e):
+                logger.debug("Ignoring read-only filesystem error when saving cookies")
+            else:
+                raise
+
+
 _cookies_file = os.getenv("YTDL_COOKIES")
 if _cookies_file:
     if os.path.exists(_cookies_file):
@@ -51,11 +66,16 @@ if _cookies_file:
         _tmp_cookies = "/tmp/cookies.txt"
         try:
             shutil.copy(_cookies_file, _tmp_cookies)
+            # Ensure the file is readable and writable
+            os.chmod(_tmp_cookies, 0o644)
             YTDL_OPTIONS["cookiefile"] = _tmp_cookies
             logger.info(f"Cookies copied to writable location: {_tmp_cookies}")
+            logger.info(f"YTDL_OPTIONS['cookiefile'] = {YTDL_OPTIONS.get('cookiefile')}")
         except Exception as e:
             logger.error(f"Failed to copy cookies to /tmp: {e}")
-            YTDL_OPTIONS["cookiefile"] = _cookies_file
+            logger.error(traceback.format_exc())
+            # Don't use read-only file - SafeYoutubeDL will handle missing cookies
+            logger.warning("Proceeding without cookies due to copy failure")
     else:
         logger.error(f"Cookies file not found: {_cookies_file}")
 else:
@@ -345,7 +365,7 @@ class Music(commands.Cog):
                     await self.play_playlist(ctx, search)
                 else:
                     logger.debug("Procesando video individual...")
-                    with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+                    with SafeYoutubeDL(YTDL_OPTIONS) as ydl:
                         if is_url:
                             logger.debug(f"Limpiando URL: {search}")
                             search = utils.clean_yt_link(search)
@@ -360,7 +380,7 @@ class Music(commands.Cog):
                                     )
                                     fallback_opts = YTDL_OPTIONS.copy()
                                     fallback_opts["format"] = "best"
-                                    with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
+                                    with SafeYoutubeDL(fallback_opts) as ydl_fb:
                                         info = ydl_fb.extract_info(
                                             search, download=False
                                         )
@@ -375,7 +395,7 @@ class Music(commands.Cog):
                             search_opts = YTDL_OPTIONS.copy()
                             search_opts["extract_flat"] = True
                             search_opts["skip_download"] = True
-                            with yt_dlp.YoutubeDL(search_opts) as ydl_search:
+                            with SafeYoutubeDL(search_opts) as ydl_search:
                                 search_info = ydl_search.extract_info(
                                     f"ytsearch5:{search}", download=False
                                 )
@@ -622,7 +642,7 @@ class Music(commands.Cog):
         search_options["extract_flat"] = True
 
         async with ctx.typing():
-            with yt_dlp.YoutubeDL(search_options) as ydl:
+            with SafeYoutubeDL(search_options) as ydl:
                 try:
                     info = ydl.extract_info(f"ytsearch5:{query}", download=False)
                     entries = info.get("entries", [])
@@ -670,7 +690,7 @@ class SearchSelect(discord.ui.Select):
 
         try:
             url = f"https://www.youtube.com/watch?v={video_id}"
-            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+            with SafeYoutubeDL(YTDL_OPTIONS) as ydl:
                 info = ydl.extract_info(url, download=False)
                 url = info["url"]
                 headers = self.music_cog._extract_http_headers(info, ydl)
