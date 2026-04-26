@@ -290,12 +290,12 @@ class Music(commands.Cog):
                         f"Conectado exitosamente. voice_client: {ctx.voice_client}"
                     )
                     logger.debug(f"is_connected: {ctx.voice_client.is_connected()}")
-                    self.update_activity()  # Update activity when connecting
+                    self.update_activity(ctx)  # Update activity when connecting
                 elif ctx.voice_client.channel != channel:
                     logger.debug(f"Moviendo al canal de voz: {channel.name}")
                     await ctx.voice_client.move_to(channel)
                     await asyncio.sleep(0.5)
-                    self.update_activity()  # Update activity when moving
+                    self.update_activity(ctx)  # Update activity when moving
                 else:
                     logger.debug(f"Ya está conectado al canal: {channel.name}")
 
