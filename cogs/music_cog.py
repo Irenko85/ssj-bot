@@ -487,7 +487,7 @@ class Music(commands.Cog):
                             logger.debug(f"Video encontrado: {title}")
 
                         logger.debug(f"Agregando a la cola: {title}")
-                        self.queue.append(
+                        self._state(ctx).queue.append(
                             {"title": title, "url": url, "headers": headers}
                         )
                         if not silent:
@@ -513,7 +513,7 @@ class Music(commands.Cog):
         logger.debug(
             f"is_playing: {ctx.voice_client.is_playing() if ctx.voice_client else 'N/A'}"
         )
-        logger.debug(f"Queue length: {len(self.queue)}")
+        logger.debug(f"Queue length: {len(self._state(ctx).queue)}")
 
         if ctx.voice_client and ctx.voice_client.is_connected():
             if not ctx.voice_client.is_playing():
