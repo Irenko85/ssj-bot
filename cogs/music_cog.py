@@ -561,29 +561,31 @@ class Music(commands.Cog):
         name="queue", aliases=["q"], help="Displays the current song queue."
     )
     async def queue(self, ctx):
-        if self.queue:
+        s = self._state(ctx)
+        if s.queue:
             queue_list = "\n".join(
-                f"{i + 1}. {song['title']}" for i, song in enumerate(self.queue)
+                f"{i + 1}. {song['title']}" for i, song in enumerate(s.queue)
             )
             await ctx.send(
-                f"Reproduciendo: **{self.actual_song}**\nCanciones en cola ({len(self.queue)}):\n**{queue_list}**"
+                f"Reproduciendo: **{s.actual_song}**\nCanciones en cola ({len(s.queue)}):\n**{queue_list}**"
             )
         else:
             await ctx.send("La cola está vacía.")
-        self.update_activity()  # Update activity when viewing queue
+        self.update_activity(ctx)  # Update activity when viewing queue
 
     @commands.command(
         name="rq", help="Removes a song from the queue by its position in the list."
     )
     async def remove_from_queue(self, ctx, position: int):
-        if not self.queue:
+        s = self._state(ctx)
+        if not s.queue:
             await ctx.send("La cola está vacía.")
             return
 
         try:
-            removed = self.queue.pop(position - 1)
+            removed = s.queue.pop(position - 1)
             await ctx.send(f"Se ha eliminado de la cola: **{removed['title']}**")
-            self.update_activity()  # Update activity when removing song
+            self.update_activity(ctx)  # Update activity when removing song
         except IndexError:
             await ctx.send(
                 "Posición inválida. Asegúrate de que el número esté dentro del rango de la cola."
@@ -591,16 +593,17 @@ class Music(commands.Cog):
 
     @commands.command(name="clear", aliases=["qc"], help="Clears the song queue.")
     async def clear(self, ctx):
-        self.queue.clear()
+        self._state(ctx).queue.clear()
         await ctx.send("La cola se vació.")
-        self.update_activity()  # Update activity when clearing queue
+        self.update_activity(ctx)  # Update activity when clearing queue
 
     @commands.command(name="shuffle", help="Shuffles the song queue.")
     async def shuffle(self, ctx):
-        if len(self.queue) > 0:
-            random.shuffle(self.queue)
+        s = self._state(ctx)
+        if len(s.queue) > 0:
+            random.shuffle(s.queue)
             await ctx.invoke(self.bot.get_command("queue"))
-            self.update_activity()  # Update activity when shuffling
+            self.update_activity(ctx)  # Update activity when shuffling
         else:
             await ctx.send("La cola está vacía.")
 
@@ -720,7 +723,7 @@ class Music(commands.Cog):
 
         view = SearchView(entries, self, ctx)
         await ctx.send(view=view)
-        self.update_activity()  # Update activity when searching
+        self.update_activity(ctx)  # Update activity when searching
 
 
 class SearchSelect(discord.ui.Select):
