@@ -1,9 +1,14 @@
-.venv
+.venv/
+venv/
 .env
 *.db
 __pycache__/
 **/__pycache__/
 *.pyc
 *.pyo
+.ruff_cache/
+*.log
 cookies.txt
+cookies_fresh.txt
+cookies/
 tmpclaude-*

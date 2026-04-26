@@ -1,18 +1,24 @@
 import os
+import sys
+import asyncio
+import logging
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from db import db
-from keep_alive import keep_alive
 
 # Load environment variables from the .env file
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = int(os.getenv("GUILD_ID"))  # Discord server ID, if required
-TOURNAMENTS_CHANNEL_ID = int(os.getenv("TOURNAMENTS_CHANNEL_ID"))
+GUILD_ID = os.getenv("GUILD_ID")
+GUILD_ID = int(GUILD_ID) if GUILD_ID else None
 
-# Start the keep-alive server to prevent the bot from sleeping on Render
-keep_alive()
+# Configure logging
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
+)
+logger = logging.getLogger("ssj-bot")
 
 # Set intents to receive message content and member events
 intents = discord.Intents.all()
@@ -20,56 +26,35 @@ intents = discord.Intents.all()
 # Initialize the bot with a command prefix and intents
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Ensure database tables are created if they don't exist
-db.create_tables()
-
 
 @bot.event
 async def on_ready():
-    """
-    Event triggered when the bot has connected to Discord.
-    """
-    print(f"{bot.user.name} conectado.")
-    guild = discord.utils.get(bot.guilds, id=GUILD_ID)
-    if guild:
-        print(f"Conectado al servidor {guild.name}.")
-    else:
-        print("Error al conectar con el servidor (Guild error).")
-
-    # Get the channel and pass it to the cog
-    channel = bot.get_channel(TOURNAMENTS_CHANNEL_ID)
-    if channel:
-        # Access the cog and set the channel
-        wca_cog = bot.get_cog("WCA")
-        if wca_cog:
-            await wca_cog.set_channel(channel)
-    else:
-        print("Canal no encontrado.")
+    """Event triggered when the bot has connected to Discord."""
+    logger.info(f"{bot.user.name} conectado.")
+    if GUILD_ID:
+        guild = discord.utils.get(bot.guilds, id=GUILD_ID)
+        if guild:
+            logger.info(f"Conectado al servidor {guild.name}.")
+        else:
+            logger.warning("No se encontró el servidor con el GUILD_ID configurado.")
 
 
-# Load cogs asynchronously
 async def load_cogs():
-    """
-    Loads all the necessary cogs for the bot.
-    """
-    await bot.load_extension("cogs.wca_cog")  # Load the WCA cog
-    await bot.load_extension("cogs.music_cog")  # Load the music cog
+    """Loads all the necessary cogs for the bot."""
+    await bot.load_extension("cogs.music_cog")
 
 
-# Run the bot
+async def main():
+    if not TOKEN:
+        logger.error("DISCORD_TOKEN no está configurado en el entorno.")
+        sys.exit(1)
+
+    logger.info("Cargando cogs...")
+    await load_cogs()
+    logger.info("Cogs cargados correctamente.")
+    await bot.start(TOKEN)
+
+
 if __name__ == "__main__":
-    import sys
-    # Disable stdout buffering to see logs immediately
     sys.stdout.reconfigure(line_buffering=True)
-
-    print("[BOT] Starting bot...", flush=True)
-
-    async def main():
-        print("[BOT] Loading cogs...", flush=True)
-        await load_cogs()  # Load all cogs before starting the bot
-        print("[BOT] Cogs loaded successfully", flush=True)
-        await bot.start(TOKEN)
-
-    import asyncio
-
     asyncio.run(main())
