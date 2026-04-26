@@ -136,6 +136,13 @@ class Music(commands.Cog):
         """Drop the state for a guild. Idempotent."""
         self.states.pop(guild_id, None)
 
+    async def cog_check(self, ctx) -> bool:
+        """Reject any music command issued outside a guild (e.g. DMs)."""
+        if ctx.guild is None:
+            await ctx.send("Los comandos de música solo funcionan en servidores.")
+            return False
+        return True
+
     def update_activity(self, ctx) -> None:
         """Refresh the activity timestamp for the guild from `ctx`."""
         s = self._state(ctx)
