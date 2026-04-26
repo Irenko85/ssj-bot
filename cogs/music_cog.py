@@ -29,7 +29,7 @@ YTDL_OPTIONS = {
     "quiet": True,
     "no_warnings": True,
     "playlist_items": "1",
-    "extractor_args": {"youtube": {"player_client": ["web"]}},
+    "extractor_args": {"youtube": {"player_client": ["tv", "ios", "android", "web"]}},
     "user_agent": DEFAULT_UA,
     "referer": "https://www.youtube.com/",
     "http_chunk_size": 10485760,
