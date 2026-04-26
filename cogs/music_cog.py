@@ -197,19 +197,20 @@ class Music(commands.Cog):
         return next((h for h in sources if h), None)
 
     async def play_next_in_queue(self, ctx):
+        s = self._state(ctx)
         logger.debug(
-            f"play_next_in_queue llamado, canciones en cola: {len(self.queue)}"
+            f"play_next_in_queue llamado en guild={ctx.guild.id}, canciones en cola: {len(s.queue)}"
         )
 
-        if len(self.queue) > 0:
+        if len(s.queue) > 0:
             # Verify that voice_client is available and connected
             if not ctx.voice_client or not ctx.voice_client.is_connected():
                 logger.error("voice_client no está conectado en play_next_in_queue")
                 await ctx.send("Error: El bot no está conectado a un canal de voz.")
                 return
 
-            self.actual_song = self.queue[0]["title"]
-            song = self.queue.pop(0)
+            s.actual_song = s.queue[0]["title"]
+            song = s.queue.pop(0)
             url = song["url"]
             logger.debug(f"Preparando reproducción: {song['title']}")
             logger.debug(
@@ -235,7 +236,7 @@ class Music(commands.Cog):
                 )
                 logger.debug("Reproducción iniciada")
                 await ctx.send(f"Reproduciendo: **{song['title']}**")
-                self.update_activity()  # Update activity when playing
+                self.update_activity(ctx)  # Update activity when playing
             except Exception as e:
                 logger.error(
                     f"Exception en play_next_in_queue: {type(e).__name__}: {e}"
