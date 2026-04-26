@@ -1,0 +1,19 @@
+services:
+  ssj-bot:
+    build: .
+    image: ssj-bot:latest
+    container_name: ssj-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Mount cookies file (optional). Place your cookies.txt under ./cookies/
+    volumes:
+      - ./cookies:/app/cookies:ro
+    # Avoid hijacking the terminal
+    tty: false
+    stdin_open: false
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

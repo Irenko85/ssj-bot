@@ -5,6 +5,7 @@ import yt_dlp
 import random
 import os
 import logging
+import tempfile
 import traceback
 import shutil
 from time import time
@@ -14,7 +15,7 @@ from discord.ext import commands, tasks
 # Configure logger
 logger = logging.getLogger(__name__)
 
-DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+DEFAULT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 FFMPEG_BEFORE_OPTIONS = (
     "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin"
 )
@@ -28,38 +29,64 @@ YTDL_OPTIONS = {
     "quiet": True,
     "no_warnings": True,
     "playlist_items": "1",
-    "extractor_args": {"youtube": {"player_client": ["web", "ios", "android"]}},
-    "js_runtimes": {"node": {}, "bun": {}},
-    "remote_components": {"ejs:npm"},
+    "extractor_args": {"youtube": {"player_client": ["tv", "ios", "android", "web"]}},
     "user_agent": DEFAULT_UA,
     "referer": "https://www.youtube.com/",
+    "http_chunk_size": 10485760,
     "headers": {
         "User-Agent": DEFAULT_UA,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9,es;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
         "DNT": "1",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Cache-Control": "max-age=0",
     },
 }
+
+
+class SafeYoutubeDL(yt_dlp.YoutubeDL):
+    """Wrapper that prevents cookie saving errors on read-only filesystems"""
+
+    def close(self):
+        try:
+            super().close()
+        except OSError as e:
+            if "Read-only file system" in str(e):
+                logger.debug("Ignoring read-only filesystem error when saving cookies")
+            else:
+                raise
+
+
 _cookies_file = os.getenv("YTDL_COOKIES")
 if _cookies_file:
     if os.path.exists(_cookies_file):
         logger.info(f"Loading cookies from: {_cookies_file}")
-        # Copy to /tmp so yt-dlp can write updates (cookies expire)
-        _tmp_cookies = "/tmp/cookies.txt"
+        # Copy to a writable temp location so yt-dlp can update them
+        _tmp_cookies = os.path.join(tempfile.gettempdir(), "ssj_cookies.txt")
         try:
             shutil.copy(_cookies_file, _tmp_cookies)
+            try:
+                os.chmod(_tmp_cookies, 0o644)
+            except OSError:
+                pass
             YTDL_OPTIONS["cookiefile"] = _tmp_cookies
             logger.info(f"Cookies copied to writable location: {_tmp_cookies}")
         except Exception as e:
-            logger.error(f"Failed to copy cookies to /tmp: {e}")
-            YTDL_OPTIONS["cookiefile"] = _cookies_file
+            logger.error(f"Failed to copy cookies to temp dir: {e}")
+            logger.error(traceback.format_exc())
+            logger.warning("Proceeding without cookies due to copy failure")
     else:
         logger.error(f"Cookies file not found: {_cookies_file}")
 else:
-    logger.warning("YTDL_COOKIES not set, trying YTDL_COOKIES_FROM_BROWSER...")
     _cookies_from_browser = os.getenv("YTDL_COOKIES_FROM_BROWSER")
     if _cookies_from_browser:
         logger.info(f"Using cookies from browser: {_cookies_from_browser}")
@@ -345,7 +372,17 @@ class Music(commands.Cog):
                     await self.play_playlist(ctx, search)
                 else:
                     logger.debug("Procesando video individual...")
-                    with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+                    logger.debug(f"YTDL_OPTIONS cookiefile: {YTDL_OPTIONS.get('cookiefile')}")
+
+                    # Enable verbose logging for first extraction to debug
+                    debug_opts = YTDL_OPTIONS.copy()
+                    if not hasattr(self, '_verbose_logged'):
+                        debug_opts['verbose'] = True
+                        self._verbose_logged = True
+                        logger.info("Enabling verbose yt-dlp logging for first extraction")
+
+                    with SafeYoutubeDL(debug_opts) as ydl:
+                        logger.debug(f"YoutubeDL instance cookiefile: {ydl.params.get('cookiefile')}")
                         if is_url:
                             logger.debug(f"Limpiando URL: {search}")
                             search = utils.clean_yt_link(search)
@@ -360,7 +397,7 @@ class Music(commands.Cog):
                                     )
                                     fallback_opts = YTDL_OPTIONS.copy()
                                     fallback_opts["format"] = "best"
-                                    with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
+                                    with SafeYoutubeDL(fallback_opts) as ydl_fb:
                                         info = ydl_fb.extract_info(
                                             search, download=False
                                         )
@@ -375,7 +412,7 @@ class Music(commands.Cog):
                             search_opts = YTDL_OPTIONS.copy()
                             search_opts["extract_flat"] = True
                             search_opts["skip_download"] = True
-                            with yt_dlp.YoutubeDL(search_opts) as ydl_search:
+                            with SafeYoutubeDL(search_opts) as ydl_search:
                                 search_info = ydl_search.extract_info(
                                     f"ytsearch5:{search}", download=False
                                 )
@@ -462,8 +499,6 @@ class Music(commands.Cog):
             ctx.voice_client.stop()
             await ctx.voice_client.disconnect()
             await ctx.send("Reproducción detenida. CHAO CTM!")
-            if self._ffmpeg_log_fp and not self._ffmpeg_log_fp.closed:
-                self._ffmpeg_log_fp.close()
 
             # Stop inactivity check
             if self.check_inactivity.is_running():
@@ -622,7 +657,7 @@ class Music(commands.Cog):
         search_options["extract_flat"] = True
 
         async with ctx.typing():
-            with yt_dlp.YoutubeDL(search_options) as ydl:
+            with SafeYoutubeDL(search_options) as ydl:
                 try:
                     info = ydl.extract_info(f"ytsearch5:{query}", download=False)
                     entries = info.get("entries", [])
@@ -670,7 +705,7 @@ class SearchSelect(discord.ui.Select):
 
         try:
             url = f"https://www.youtube.com/watch?v={video_id}"
-            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+            with SafeYoutubeDL(YTDL_OPTIONS) as ydl:
                 info = ydl.extract_info(url, download=False)
                 url = info["url"]
                 headers = self.music_cog._extract_http_headers(info, ydl)
