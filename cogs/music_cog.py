@@ -5,6 +5,7 @@ import yt_dlp
 import random
 import os
 import logging
+import tempfile
 import traceback
 import shutil
 from time import time
@@ -66,58 +67,32 @@ class SafeYoutubeDL(yt_dlp.YoutubeDL):
 
 
 _cookies_file = os.getenv("YTDL_COOKIES")
-print(f"[INIT] YTDL_COOKIES env var: {_cookies_file}", flush=True)  # Debug print
 if _cookies_file:
-    print(f"[INIT] Checking if cookies file exists: {_cookies_file}", flush=True)
     if os.path.exists(_cookies_file):
-        print(f"[INIT] Cookies file found! Loading from: {_cookies_file}", flush=True)
         logger.info(f"Loading cookies from: {_cookies_file}")
-        # Copy to /tmp so yt-dlp can write updates (cookies expire)
-        _tmp_cookies = "/tmp/cookies.txt"
+        # Copy to a writable temp location so yt-dlp can update them
+        _tmp_cookies = os.path.join(tempfile.gettempdir(), "ssj_cookies.txt")
         try:
             shutil.copy(_cookies_file, _tmp_cookies)
-            # Ensure the file is readable and writable
-            os.chmod(_tmp_cookies, 0o644)
+            try:
+                os.chmod(_tmp_cookies, 0o644)
+            except OSError:
+                pass
             YTDL_OPTIONS["cookiefile"] = _tmp_cookies
-            print(f"[INIT] SUCCESS: Cookies copied to {_tmp_cookies}", flush=True)
-
-            # Verify the file was copied correctly
-            with open(_tmp_cookies, 'r') as f:
-                lines = f.readlines()
-                cookie_count = sum(1 for line in lines if line.strip() and not line.startswith('#'))
-                print(f"[INIT] Cookies file has {len(lines)} lines total, {cookie_count} actual cookies", flush=True)
-                # Check for important YouTube cookies
-                important_cookies = ['SID', 'HSID', 'SSID', 'APISID', 'SAPISID']
-                found_cookies = [cookie for cookie in important_cookies if any(cookie in line for line in lines)]
-                print(f"[INIT] Found important cookies: {found_cookies}", flush=True)
-
             logger.info(f"Cookies copied to writable location: {_tmp_cookies}")
-            logger.info(f"YTDL_OPTIONS['cookiefile'] = {YTDL_OPTIONS.get('cookiefile')}")
         except Exception as e:
-            print(f"[INIT] ERROR: Failed to copy cookies: {e}", flush=True)
-            logger.error(f"Failed to copy cookies to /tmp: {e}")
+            logger.error(f"Failed to copy cookies to temp dir: {e}")
             logger.error(traceback.format_exc())
-            # Don't use read-only file - SafeYoutubeDL will handle missing cookies
             logger.warning("Proceeding without cookies due to copy failure")
     else:
-        print(f"[INIT] ERROR: Cookies file NOT found at {_cookies_file}", flush=True)
         logger.error(f"Cookies file not found: {_cookies_file}")
-        # List files in /etc/secrets to debug
-        try:
-            secrets_files = os.listdir("/etc/secrets")
-            print(f"[INIT] Files in /etc/secrets: {secrets_files}", flush=True)
-        except Exception as e:
-            print(f"[INIT] Could not list /etc/secrets: {e}", flush=True)
 else:
-    print("[INIT] YTDL_COOKIES env var not set", flush=True)
-    logger.warning("YTDL_COOKIES not set, trying YTDL_COOKIES_FROM_BROWSER...")
     _cookies_from_browser = os.getenv("YTDL_COOKIES_FROM_BROWSER")
     if _cookies_from_browser:
         logger.info(f"Using cookies from browser: {_cookies_from_browser}")
         # Typical values: chrome, edge, brave, firefox
         YTDL_OPTIONS["cookiesfrombrowser"] = (_cookies_from_browser,)
     else:
-        print("[INIT] No cookies configured at all!", flush=True)
         logger.warning("No cookies configured. YouTube may require authentication.")
 
 DBZ_PLAYLIST_URL = "https://www.youtube.com/watch_videos?video_ids=YnL70cee6qo,5LVcwPrfNo4,GHja1cUmgsc,k6r8-AhAwmQ,4EPnL5oVnaw,9NXIo6PIb5I,lB3GO22VUPs,VfjKh7pqXNo,buaoMjom9XQ,Ecfux9RTmbY,UFjw-gSLy1w,GHIfsW3SPVk,OB0QCHxzl1s,3aevyrmqbY0,pYnLO7MVKno,uC8sc0cQa9M,8m3fIsHdKg8,y7RLCzAZFtU"
@@ -524,8 +499,6 @@ class Music(commands.Cog):
             ctx.voice_client.stop()
             await ctx.voice_client.disconnect()
             await ctx.send("Reproducción detenida. CHAO CTM!")
-            if self._ffmpeg_log_fp and not self._ffmpeg_log_fp.closed:
-                self._ffmpeg_log_fp.close()
 
             # Stop inactivity check
             if self.check_inactivity.is_running():
