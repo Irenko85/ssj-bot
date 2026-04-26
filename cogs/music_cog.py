@@ -528,35 +528,34 @@ class Music(commands.Cog):
     @commands.command(name="stop", help="Stops playback and leaves the voice channel.")
     async def stop(self, ctx):
         if ctx.voice_client:
-            self.queue.clear()
+            s = self._state(ctx)
+            s.queue.clear()
             ctx.voice_client.stop()
             await ctx.voice_client.disconnect()
             await ctx.send("Reproducción detenida. CHAO CTM!")
-
-            # Stop inactivity check
-            if self.check_inactivity.is_running():
-                self.check_inactivity.stop()
+            self._cleanup_state(ctx.guild.id)
+            # The check_inactivity loop stops itself once self.states is empty
 
     @commands.command(name="skip", aliases=["s"], help="Skips the current song.")
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
             await ctx.send("Se skipeó la canción actual.")
-            self.update_activity()  # Update activity when skipping
+            self.update_activity(ctx)  # Update activity when skipping
 
     @commands.command(name="pause", help="Pauses the current song.")
     async def pause(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
             await ctx.send("Se ha pausado la reproducción.")
-            self.update_activity()  # Update activity when pausing
+            self.update_activity(ctx)  # Update activity when pausing
 
     @commands.command(name="resume", aliases=["r"], help="Resumes the paused song.")
     async def resume(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
             await ctx.send("Se ha reanudado la reproducción.")
-            self.update_activity()  # Update activity when resuming
+            self.update_activity(ctx)  # Update activity when resuming
 
     @commands.command(
         name="queue", aliases=["q"], help="Displays the current song queue."
