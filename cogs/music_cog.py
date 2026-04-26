@@ -338,14 +338,17 @@ class Music(commands.Cog):
         await ctx.send(f"Se agregó la playlist a la cola.")
 
     def start_inactivity_check(self, ctx):
-        """Inicia o reinicia el check de inactividad"""
-        logger.debug("start_inactivity_check llamado")
-        self.inactivity_channel = ctx.channel
-        self.update_activity()
+        """Make sure the per-guild inactivity loop is tracking this guild."""
+        logger.debug(
+            f"start_inactivity_check llamado para guild={ctx.guild.id}"
+        )
+        s = self._state(ctx)
+        s.inactivity_channel = ctx.channel
+        self.update_activity(ctx)
 
         if not self.check_inactivity.is_running():
             logger.debug("Iniciando check_inactivity loop")
-            self.check_inactivity.start(ctx)
+            self.check_inactivity.start()
         else:
             logger.debug("check_inactivity ya está corriendo")
 
@@ -607,78 +610,95 @@ class Music(commands.Cog):
         result = random.choice(["Cara", "Sello"])
         await ctx.send(f"Resultado: **{result}**")
 
-    @tasks.loop(seconds=15)  # Increased to 15 seconds to reduce load
-    async def check_inactivity(self, ctx):
-        INACTIVITY_TIMEOUT = 300  # 5 minutes instead of 3
+    @tasks.loop(seconds=15)
+    async def check_inactivity(self):
+        """Per-guild inactivity check. Disconnects only the guilds that timed out."""
+        INACTIVITY_TIMEOUT = 300  # 5 minutes
         WARNING_TIME = 240  # Warn at 4 minutes
 
-        try:
-            logger.debug("check_inactivity ejecutándose...")
-            # Check if bot is connected
-            if not ctx.voice_client or not ctx.voice_client.is_connected():
-                logger.debug(
-                    "check_inactivity: voice_client no conectado, deteniendo loop"
-                )
-                self.check_inactivity.stop()
-                return
-
-            # If no activity timestamp, initialize it
-            if self.last_activity_timestamp is None:
-                self.update_activity()
-                return
-
-            current_time = time()
-            time_since_activity = current_time - self.last_activity_timestamp
-
-            # If playing, paused, or has songs in queue, consider as active
-            if (
-                ctx.voice_client.is_playing()
-                or ctx.voice_client.is_paused()
-                or len(self.queue) > 0
-            ):
-                self.update_activity()
-                return
-
-            # Check if there are users in the voice channel (excluding bot)
-            if ctx.voice_client.channel:
-                members_in_channel = [
-                    member
-                    for member in ctx.voice_client.channel.members
-                    if not member.bot
-                ]
-                if not members_in_channel:
-                    # If no users, disconnect immediately
-                    await ctx.voice_client.disconnect()
-                    self.check_inactivity.stop()
-                    if self.inactivity_channel:
-                        await self.inactivity_channel.send(
-                            "🛑 Desconectado porque no hay usuarios en el canal."
-                        )
-                    return
-
-            # Warning before disconnecting
-            if time_since_activity > WARNING_TIME and not self.inactivity_warned:
-                self.inactivity_warned = True
-                if self.inactivity_channel:
-                    remaining_time = int(INACTIVITY_TIMEOUT - time_since_activity)
-                    await self.inactivity_channel.send(
-                        f"⚠️ El bot se desconectará en {remaining_time} segundos por inactividad. "
-                        f"Usa cualquier comando de música para mantener la conexión."
-                    )
-
-            # Disconnect due to inactivity
-            if time_since_activity > INACTIVITY_TIMEOUT:
-                await ctx.voice_client.disconnect()
-                self.check_inactivity.stop()
-                if self.inactivity_channel:
-                    await self.inactivity_channel.send(
-                        "🛑 Desconectado por inactividad."
-                    )
-
-        except Exception as e:
-            logger.error(f"Error en check_inactivity: {e}")
-            # In case of error, stop the loop to prevent error spam
+        # If no guild is being tracked, stop the loop
+        if not self.states:
+            logger.debug("check_inactivity: sin estados activos, deteniendo loop")
             self.check_inactivity.stop()
+            return
+
+        current_time = time()
+
+        # Iterate over a snapshot to allow safe mutation via _cleanup_state
+        for guild_id, s in list(self.states.items()):
+            try:
+                guild = self.bot.get_guild(guild_id)
+                voice_client = (
+                    discord.utils.get(self.bot.voice_clients, guild=guild)
+                    if guild
+                    else None
+                )
+
+                # Bot is not connected to voice in this guild — drop state
+                if not voice_client or not voice_client.is_connected():
+                    logger.debug(
+                        f"check_inactivity: guild={guild_id} sin voice_client, limpiando"
+                    )
+                    self._cleanup_state(guild_id)
+                    continue
+
+                # Active by definition: playing, paused, or queued
+                if (
+                    voice_client.is_playing()
+                    or voice_client.is_paused()
+                    or len(s.queue) > 0
+                ):
+                    s.last_activity = current_time
+                    s.inactivity_warned = False
+                    continue
+
+                time_since_activity = current_time - s.last_activity
+
+                # Disconnect immediately if the channel is empty (only bot left)
+                channel = voice_client.channel
+                if channel:
+                    members_in_channel = [
+                        m for m in channel.members if not m.bot
+                    ]
+                    if not members_in_channel:
+                        await voice_client.disconnect()
+                        if s.inactivity_channel:
+                            await s.inactivity_channel.send(
+                                "🛑 Desconectado porque no hay usuarios en el canal."
+                            )
+                        self._cleanup_state(guild_id)
+                        continue
+
+                # Warning a minute before disconnect
+                if (
+                    time_since_activity > WARNING_TIME
+                    and not s.inactivity_warned
+                ):
+                    s.inactivity_warned = True
+                    if s.inactivity_channel:
+                        remaining_time = int(
+                            INACTIVITY_TIMEOUT - time_since_activity
+                        )
+                        await s.inactivity_channel.send(
+                            f"⚠️ El bot se desconectará en {remaining_time} segundos por inactividad. "
+                            f"Usa cualquier comando de música para mantener la conexión."
+                        )
+
+                # Disconnect for inactivity
+                if time_since_activity > INACTIVITY_TIMEOUT:
+                    await voice_client.disconnect()
+                    if s.inactivity_channel:
+                        await s.inactivity_channel.send(
+                            "🛑 Desconectado por inactividad."
+                        )
+                    self._cleanup_state(guild_id)
+
+            except Exception as e:
+                logger.error(
+                    f"Error en check_inactivity para guild={guild_id}: {e}"
+                )
+                # Continue with the other guilds; do not stop the whole loop
+                continue
 
     @commands.command(name="search", help="Searches for a song on YouTube.")
     async def search(self, ctx, *, query: str):
