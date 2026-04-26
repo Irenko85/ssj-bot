@@ -99,19 +99,48 @@ DBZ_PLAYLIST_URL = "https://www.youtube.com/watch_videos?video_ids=YnL70cee6qo,5
 ANIME_PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLHPZvFJe7-ufMte_SHOhl1qncTTzjpkO7&jct=DyxeqvyCylM2t3X00gNa8g"
 
 
+class GuildState:
+    """Per-guild music state. One instance per Discord server."""
+
+    __slots__ = (
+        "queue",
+        "actual_song",
+        "last_activity",
+        "inactivity_warned",
+        "inactivity_channel",
+    )
+
+    def __init__(self) -> None:
+        self.queue: list[dict] = []
+        self.actual_song: str | None = None
+        self.last_activity: float = time()
+        self.inactivity_warned: bool = False
+        self.inactivity_channel: discord.TextChannel | None = None
+
+
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.queue = []
-        self.actual_song = None
-        self.inactivity_channel = None
-        self.last_activity_timestamp = None
-        self.inactivity_warned = False  # Flag to prevent spam warnings
+        self.states: dict[int, GuildState] = {}
 
-    def update_activity(self):
-        """Update activity timestamp"""
-        self.last_activity_timestamp = time()
-        self.inactivity_warned = False
+    def _state(self, ctx_or_guild) -> GuildState:
+        """Return (or create) the GuildState for the relevant guild."""
+        guild = (
+            ctx_or_guild.guild
+            if hasattr(ctx_or_guild, "guild")
+            else ctx_or_guild
+        )
+        return self.states.setdefault(guild.id, GuildState())
+
+    def _cleanup_state(self, guild_id: int) -> None:
+        """Drop the state for a guild. Idempotent."""
+        self.states.pop(guild_id, None)
+
+    def update_activity(self, ctx) -> None:
+        """Refresh the activity timestamp for the guild from `ctx`."""
+        s = self._state(ctx)
+        s.last_activity = time()
+        s.inactivity_warned = False
 
     def _build_before_options(self, headers: dict | None) -> str:
         """Build ffmpeg options including headers if they exist."""
