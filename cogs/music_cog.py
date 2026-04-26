@@ -775,13 +775,13 @@ class SearchSelect(discord.ui.Select):
             )
             return
 
-        self.music_cog.queue.append(
+        self.music_cog._state(self.ctx).queue.append(
             {"title": title, "url": full_url, "headers": headers}
         )
         await interaction.response.send_message(f"Se agregó a la cola: **{title}**")
 
         # Update activity when adding song
-        self.music_cog.update_activity()
+        self.music_cog.update_activity(self.ctx)
 
         if not self.ctx.voice_client or not self.ctx.voice_client.is_connected():
             if self.ctx.author.voice and self.ctx.author.voice.channel:
