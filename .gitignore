@@ -12,3 +12,5 @@ cookies.txt
 cookies_fresh.txt
 cookies/
 tmpclaude-*
+.pytest_cache/
+
