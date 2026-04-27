@@ -339,7 +339,7 @@ class Music(commands.Cog):
         if not await self.join_voice_channel(ctx):
             return
 
-        video_urls = utils.get_video_urls_from_playlist(playlist_url)
+        video_urls = await utils.get_video_urls_from_playlist(playlist_url)
         logger.debug(f"Video URLs before: {video_urls}")
         if not video_urls:
             await ctx.send(f"No se pudo cargar la playlist.")
@@ -414,7 +414,7 @@ class Music(commands.Cog):
             try:
                 if is_url and is_playlist:
                     logger.debug("Procesando playlist...")
-                    video_urls = utils.get_video_urls_from_playlist(search)
+                    video_urls = await utils.get_video_urls_from_playlist(search)
                     if not video_urls:
                         await ctx.send(
                             "No se pudieron obtener canciones de la playlist."
