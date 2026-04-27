@@ -99,19 +99,55 @@ DBZ_PLAYLIST_URL = "https://www.youtube.com/watch_videos?video_ids=YnL70cee6qo,5
 ANIME_PLAYLIST_URL = "https://www.youtube.com/playlist?list=PLHPZvFJe7-ufMte_SHOhl1qncTTzjpkO7&jct=DyxeqvyCylM2t3X00gNa8g"
 
 
+class GuildState:
+    """Per-guild music state. One instance per Discord server."""
+
+    __slots__ = (
+        "queue",
+        "actual_song",
+        "last_activity",
+        "inactivity_warned",
+        "inactivity_channel",
+    )
+
+    def __init__(self) -> None:
+        self.queue: list[dict] = []
+        self.actual_song: str | None = None
+        self.last_activity: float = time()
+        self.inactivity_warned: bool = False
+        self.inactivity_channel: discord.TextChannel | None = None
+
+
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.queue = []
-        self.actual_song = None
-        self.inactivity_channel = None
-        self.last_activity_timestamp = None
-        self.inactivity_warned = False  # Flag to prevent spam warnings
+        self.states: dict[int, GuildState] = {}
 
-    def update_activity(self):
-        """Update activity timestamp"""
-        self.last_activity_timestamp = time()
-        self.inactivity_warned = False
+    def _state(self, ctx_or_guild) -> GuildState:
+        """Return (or create) the GuildState for the relevant guild."""
+        guild = (
+            ctx_or_guild.guild
+            if hasattr(ctx_or_guild, "guild")
+            else ctx_or_guild
+        )
+        return self.states.setdefault(guild.id, GuildState())
+
+    def _cleanup_state(self, guild_id: int) -> None:
+        """Drop the state for a guild. Idempotent."""
+        self.states.pop(guild_id, None)
+
+    async def cog_check(self, ctx) -> bool:
+        """Reject any music command issued outside a guild (e.g. DMs)."""
+        if ctx.guild is None:
+            await ctx.send("Los comandos de música solo funcionan en servidores.")
+            return False
+        return True
+
+    def update_activity(self, ctx) -> None:
+        """Refresh the activity timestamp for the guild from `ctx`."""
+        s = self._state(ctx)
+        s.last_activity = time()
+        s.inactivity_warned = False
 
     def _build_before_options(self, headers: dict | None) -> str:
         """Build ffmpeg options including headers if they exist."""
@@ -168,19 +204,20 @@ class Music(commands.Cog):
         return next((h for h in sources if h), None)
 
     async def play_next_in_queue(self, ctx):
+        s = self._state(ctx)
         logger.debug(
-            f"play_next_in_queue llamado, canciones en cola: {len(self.queue)}"
+            f"play_next_in_queue llamado en guild={ctx.guild.id}, canciones en cola: {len(s.queue)}"
         )
 
-        if len(self.queue) > 0:
+        if len(s.queue) > 0:
             # Verify that voice_client is available and connected
             if not ctx.voice_client or not ctx.voice_client.is_connected():
                 logger.error("voice_client no está conectado en play_next_in_queue")
                 await ctx.send("Error: El bot no está conectado a un canal de voz.")
                 return
 
-            self.actual_song = self.queue[0]["title"]
-            song = self.queue.pop(0)
+            s.actual_song = s.queue[0]["title"]
+            song = s.queue.pop(0)
             url = song["url"]
             logger.debug(f"Preparando reproducción: {song['title']}")
             logger.debug(
@@ -206,7 +243,7 @@ class Music(commands.Cog):
                 )
                 logger.debug("Reproducción iniciada")
                 await ctx.send(f"Reproduciendo: **{song['title']}**")
-                self.update_activity()  # Update activity when playing
+                self.update_activity(ctx)  # Update activity when playing
             except Exception as e:
                 logger.error(
                     f"Exception en play_next_in_queue: {type(e).__name__}: {e}"
@@ -260,12 +297,12 @@ class Music(commands.Cog):
                         f"Conectado exitosamente. voice_client: {ctx.voice_client}"
                     )
                     logger.debug(f"is_connected: {ctx.voice_client.is_connected()}")
-                    self.update_activity()  # Update activity when connecting
+                    self.update_activity(ctx)  # Update activity when connecting
                 elif ctx.voice_client.channel != channel:
                     logger.debug(f"Moviendo al canal de voz: {channel.name}")
                     await ctx.voice_client.move_to(channel)
                     await asyncio.sleep(0.5)
-                    self.update_activity()  # Update activity when moving
+                    self.update_activity(ctx)  # Update activity when moving
                 else:
                     logger.debug(f"Ya está conectado al canal: {channel.name}")
 
@@ -308,14 +345,17 @@ class Music(commands.Cog):
         await ctx.send(f"Se agregó la playlist a la cola.")
 
     def start_inactivity_check(self, ctx):
-        """Inicia o reinicia el check de inactividad"""
-        logger.debug("start_inactivity_check llamado")
-        self.inactivity_channel = ctx.channel
-        self.update_activity()
+        """Make sure the per-guild inactivity loop is tracking this guild."""
+        logger.debug(
+            f"start_inactivity_check llamado para guild={ctx.guild.id}"
+        )
+        s = self._state(ctx)
+        s.inactivity_channel = ctx.channel
+        self.update_activity(ctx)
 
         if not self.check_inactivity.is_running():
             logger.debug("Iniciando check_inactivity loop")
-            self.check_inactivity.start(ctx)
+            self.check_inactivity.start()
         else:
             logger.debug("check_inactivity ya está corriendo")
 
@@ -454,7 +494,7 @@ class Music(commands.Cog):
                             logger.debug(f"Video encontrado: {title}")
 
                         logger.debug(f"Agregando a la cola: {title}")
-                        self.queue.append(
+                        self._state(ctx).queue.append(
                             {"title": title, "url": url, "headers": headers}
                         )
                         if not silent:
@@ -480,7 +520,7 @@ class Music(commands.Cog):
         logger.debug(
             f"is_playing: {ctx.voice_client.is_playing() if ctx.voice_client else 'N/A'}"
         )
-        logger.debug(f"Queue length: {len(self.queue)}")
+        logger.debug(f"Queue length: {len(self._state(ctx).queue)}")
 
         if ctx.voice_client and ctx.voice_client.is_connected():
             if not ctx.voice_client.is_playing():
@@ -495,63 +535,64 @@ class Music(commands.Cog):
     @commands.command(name="stop", help="Stops playback and leaves the voice channel.")
     async def stop(self, ctx):
         if ctx.voice_client:
-            self.queue.clear()
+            s = self._state(ctx)
+            s.queue.clear()
             ctx.voice_client.stop()
             await ctx.voice_client.disconnect()
             await ctx.send("Reproducción detenida. CHAO CTM!")
-
-            # Stop inactivity check
-            if self.check_inactivity.is_running():
-                self.check_inactivity.stop()
+            self._cleanup_state(ctx.guild.id)
+            # The check_inactivity loop stops itself once self.states is empty
 
     @commands.command(name="skip", aliases=["s"], help="Skips the current song.")
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
             await ctx.send("Se skipeó la canción actual.")
-            self.update_activity()  # Update activity when skipping
+            self.update_activity(ctx)  # Update activity when skipping
 
     @commands.command(name="pause", help="Pauses the current song.")
     async def pause(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
             await ctx.send("Se ha pausado la reproducción.")
-            self.update_activity()  # Update activity when pausing
+            self.update_activity(ctx)  # Update activity when pausing
 
     @commands.command(name="resume", aliases=["r"], help="Resumes the paused song.")
     async def resume(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
             await ctx.send("Se ha reanudado la reproducción.")
-            self.update_activity()  # Update activity when resuming
+            self.update_activity(ctx)  # Update activity when resuming
 
     @commands.command(
         name="queue", aliases=["q"], help="Displays the current song queue."
     )
     async def queue(self, ctx):
-        if self.queue:
+        s = self._state(ctx)
+        if s.queue:
             queue_list = "\n".join(
-                f"{i + 1}. {song['title']}" for i, song in enumerate(self.queue)
+                f"{i + 1}. {song['title']}" for i, song in enumerate(s.queue)
             )
             await ctx.send(
-                f"Reproduciendo: **{self.actual_song}**\nCanciones en cola ({len(self.queue)}):\n**{queue_list}**"
+                f"Reproduciendo: **{s.actual_song}**\nCanciones en cola ({len(s.queue)}):\n**{queue_list}**"
             )
         else:
             await ctx.send("La cola está vacía.")
-        self.update_activity()  # Update activity when viewing queue
+        self.update_activity(ctx)  # Update activity when viewing queue
 
     @commands.command(
         name="rq", help="Removes a song from the queue by its position in the list."
     )
     async def remove_from_queue(self, ctx, position: int):
-        if not self.queue:
+        s = self._state(ctx)
+        if not s.queue:
             await ctx.send("La cola está vacía.")
             return
 
         try:
-            removed = self.queue.pop(position - 1)
+            removed = s.queue.pop(position - 1)
             await ctx.send(f"Se ha eliminado de la cola: **{removed['title']}**")
-            self.update_activity()  # Update activity when removing song
+            self.update_activity(ctx)  # Update activity when removing song
         except IndexError:
             await ctx.send(
                 "Posición inválida. Asegúrate de que el número esté dentro del rango de la cola."
@@ -559,16 +600,17 @@ class Music(commands.Cog):
 
     @commands.command(name="clear", aliases=["qc"], help="Clears the song queue.")
     async def clear(self, ctx):
-        self.queue.clear()
+        self._state(ctx).queue.clear()
         await ctx.send("La cola se vació.")
-        self.update_activity()  # Update activity when clearing queue
+        self.update_activity(ctx)  # Update activity when clearing queue
 
     @commands.command(name="shuffle", help="Shuffles the song queue.")
     async def shuffle(self, ctx):
-        if len(self.queue) > 0:
-            random.shuffle(self.queue)
+        s = self._state(ctx)
+        if len(s.queue) > 0:
+            random.shuffle(s.queue)
             await ctx.invoke(self.bot.get_command("queue"))
-            self.update_activity()  # Update activity when shuffling
+            self.update_activity(ctx)  # Update activity when shuffling
         else:
             await ctx.send("La cola está vacía.")
 
@@ -577,78 +619,95 @@ class Music(commands.Cog):
         result = random.choice(["Cara", "Sello"])
         await ctx.send(f"Resultado: **{result}**")
 
-    @tasks.loop(seconds=15)  # Increased to 15 seconds to reduce load
-    async def check_inactivity(self, ctx):
-        INACTIVITY_TIMEOUT = 300  # 5 minutes instead of 3
+    @tasks.loop(seconds=15)
+    async def check_inactivity(self):
+        """Per-guild inactivity check. Disconnects only the guilds that timed out."""
+        INACTIVITY_TIMEOUT = 300  # 5 minutes
         WARNING_TIME = 240  # Warn at 4 minutes
 
-        try:
-            logger.debug("check_inactivity ejecutándose...")
-            # Check if bot is connected
-            if not ctx.voice_client or not ctx.voice_client.is_connected():
-                logger.debug(
-                    "check_inactivity: voice_client no conectado, deteniendo loop"
-                )
-                self.check_inactivity.stop()
-                return
-
-            # If no activity timestamp, initialize it
-            if self.last_activity_timestamp is None:
-                self.update_activity()
-                return
-
-            current_time = time()
-            time_since_activity = current_time - self.last_activity_timestamp
-
-            # If playing, paused, or has songs in queue, consider as active
-            if (
-                ctx.voice_client.is_playing()
-                or ctx.voice_client.is_paused()
-                or len(self.queue) > 0
-            ):
-                self.update_activity()
-                return
-
-            # Check if there are users in the voice channel (excluding bot)
-            if ctx.voice_client.channel:
-                members_in_channel = [
-                    member
-                    for member in ctx.voice_client.channel.members
-                    if not member.bot
-                ]
-                if not members_in_channel:
-                    # If no users, disconnect immediately
-                    await ctx.voice_client.disconnect()
-                    self.check_inactivity.stop()
-                    if self.inactivity_channel:
-                        await self.inactivity_channel.send(
-                            "🛑 Desconectado porque no hay usuarios en el canal."
-                        )
-                    return
-
-            # Warning before disconnecting
-            if time_since_activity > WARNING_TIME and not self.inactivity_warned:
-                self.inactivity_warned = True
-                if self.inactivity_channel:
-                    remaining_time = int(INACTIVITY_TIMEOUT - time_since_activity)
-                    await self.inactivity_channel.send(
-                        f"⚠️ El bot se desconectará en {remaining_time} segundos por inactividad. "
-                        f"Usa cualquier comando de música para mantener la conexión."
-                    )
-
-            # Disconnect due to inactivity
-            if time_since_activity > INACTIVITY_TIMEOUT:
-                await ctx.voice_client.disconnect()
-                self.check_inactivity.stop()
-                if self.inactivity_channel:
-                    await self.inactivity_channel.send(
-                        "🛑 Desconectado por inactividad."
-                    )
-
-        except Exception as e:
-            logger.error(f"Error en check_inactivity: {e}")
-            # In case of error, stop the loop to prevent error spam
+        # If no guild is being tracked, stop the loop
+        if not self.states:
+            logger.debug("check_inactivity: sin estados activos, deteniendo loop")
             self.check_inactivity.stop()
+            return
+
+        current_time = time()
+
+        # Iterate over a snapshot to allow safe mutation via _cleanup_state
+        for guild_id, s in list(self.states.items()):
+            try:
+                guild = self.bot.get_guild(guild_id)
+                voice_client = (
+                    discord.utils.get(self.bot.voice_clients, guild=guild)
+                    if guild
+                    else None
+                )
+
+                # Bot is not connected to voice in this guild — drop state
+                if not voice_client or not voice_client.is_connected():
+                    logger.debug(
+                        f"check_inactivity: guild={guild_id} sin voice_client, limpiando"
+                    )
+                    self._cleanup_state(guild_id)
+                    continue
+
+                # Active by definition: playing, paused, or queued
+                if (
+                    voice_client.is_playing()
+                    or voice_client.is_paused()
+                    or len(s.queue) > 0
+                ):
+                    s.last_activity = current_time
+                    s.inactivity_warned = False
+                    continue
+
+                time_since_activity = current_time - s.last_activity
+
+                # Disconnect immediately if the channel is empty (only bot left)
+                channel = voice_client.channel
+                if channel:
+                    members_in_channel = [
+                        m for m in channel.members if not m.bot
+                    ]
+                    if not members_in_channel:
+                        await voice_client.disconnect()
+                        if s.inactivity_channel:
+                            await s.inactivity_channel.send(
+                                "🛑 Desconectado porque no hay usuarios en el canal."
+                            )
+                        self._cleanup_state(guild_id)
+                        continue
+
+                # Warning a minute before disconnect
+                if (
+                    time_since_activity > WARNING_TIME
+                    and not s.inactivity_warned
+                ):
+                    s.inactivity_warned = True
+                    if s.inactivity_channel:
+                        remaining_time = int(
+                            INACTIVITY_TIMEOUT - time_since_activity
+                        )
+                        await s.inactivity_channel.send(
+                            f"⚠️ El bot se desconectará en {remaining_time} segundos por inactividad. "
+                            f"Usa cualquier comando de música para mantener la conexión."
+                        )
+
+                # Disconnect for inactivity
+                if time_since_activity > INACTIVITY_TIMEOUT:
+                    await voice_client.disconnect()
+                    if s.inactivity_channel:
+                        await s.inactivity_channel.send(
+                            "🛑 Desconectado por inactividad."
+                        )
+                    self._cleanup_state(guild_id)
+
+            except Exception as e:
+                logger.error(
+                    f"Error en check_inactivity para guild={guild_id}: {e}"
+                )
+                # Continue with the other guilds; do not stop the whole loop
+                continue
 
     @commands.command(name="search", help="Searches for a song on YouTube.")
     async def search(self, ctx, *, query: str):
@@ -671,7 +730,7 @@ class Music(commands.Cog):
 
         view = SearchView(entries, self, ctx)
         await ctx.send(view=view)
-        self.update_activity()  # Update activity when searching
+        self.update_activity(ctx)  # Update activity when searching
 
 
 class SearchSelect(discord.ui.Select):
@@ -723,13 +782,13 @@ class SearchSelect(discord.ui.Select):
             )
             return
 
-        self.music_cog.queue.append(
+        self.music_cog._state(self.ctx).queue.append(
             {"title": title, "url": full_url, "headers": headers}
         )
         await interaction.response.send_message(f"Se agregó a la cola: **{title}**")
 
         # Update activity when adding song
-        self.music_cog.update_activity()
+        self.music_cog.update_activity(self.ctx)
 
         if not self.ctx.voice_client or not self.ctx.voice_client.is_connected():
             if self.ctx.author.voice and self.ctx.author.voice.channel:

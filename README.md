@@ -27,7 +27,6 @@ Bot de música para Discord (YouTube via `yt-dlp` + `ffmpeg`). Pensado para corr
 
    ```dotenv
    DISCORD_TOKEN=tu_token
-   GUILD_ID=id_de_tu_servidor
    LOG_LEVEL=INFO
    # Opcional: cookies de YouTube
    # YTDL_COOKIES=/app/cookies/cookies.txt
