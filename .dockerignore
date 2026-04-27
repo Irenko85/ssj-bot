@@ -28,3 +28,10 @@ README.md
 Dockerfile
 docker-compose.yml
 .dockerignore
+
+# Dev/test artifacts
+tests/
+docs/
+requirements-dev.txt
+pytest.ini
+.pytest_cache/
