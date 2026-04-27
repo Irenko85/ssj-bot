@@ -408,7 +408,7 @@ class Music(commands.Cog):
         await self.play_playlist(ctx, ANIME_PLAYLIST_URL, shuffle=True)
 
     @commands.hybrid_command(name="play", description="Play a song or playlist")
-    async def play(self, ctx: commands.Context, search: str):
+    async def play(self, ctx: commands.Context, *, search: str):
         await ctx.defer()
         await self._play_internal(ctx, search, silent=False)
 
