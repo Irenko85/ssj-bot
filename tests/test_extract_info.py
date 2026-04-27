@@ -42,3 +42,20 @@ async def test_extract_info_returns_value():
 
     assert result == {"title": "song", "url": "u"}
     fake_ydl.extract_info.assert_called_once_with("https://example.com")
+
+
+@pytest.mark.asyncio
+async def test_extract_info_raises_timeout(monkeypatch):
+    cog = _make_cog()
+    monkeypatch.setattr(Music, "EXTRACT_TIMEOUT_SECONDS", 0.05)
+
+    def slow_extract(*args, **kwargs):
+        import time
+        time.sleep(0.5)
+        return {"title": "never returned"}
+
+    fake_ydl = Mock()
+    fake_ydl.extract_info = slow_extract
+
+    with pytest.raises(asyncio.TimeoutError):
+        await cog._extract_info(fake_ydl, "https://example.com")

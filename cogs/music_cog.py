@@ -127,7 +127,16 @@ class Music(commands.Cog):
 
     async def _extract_info(self, ydl, *args, **kwargs):
         """Run blocking ydl.extract_info in a worker thread, with timeout."""
-        return await asyncio.to_thread(ydl.extract_info, *args, **kwargs)
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(ydl.extract_info, *args, **kwargs),
+                timeout=self.EXTRACT_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"extract_info timed out after {self.EXTRACT_TIMEOUT_SECONDS}s"
+            )
+            raise
 
     def _state(self, ctx_or_guild) -> GuildState:
         """Return (or create) the GuildState for the relevant guild."""
