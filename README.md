@@ -4,17 +4,23 @@ Bot de música para Discord (YouTube via `yt-dlp` + `ffmpeg`). Pensado para corr
 
 ## Comandos principales
 
-- `!play <url|búsqueda>` (alias `!p`) - reproduce o agrega a la cola
-- `!skip` (alias `!s`) - salta la canción actual
-- `!pause` / `!resume`
-- `!queue` (alias `!q`) - muestra la cola
-- `!shuffle` - mezcla la cola
-- `!clear` (alias `!qc`) - vacía la cola
-- `!rq <pos>` - elimina canción por posición
-- `!stop` - detiene y desconecta
-- `!search <query>` - busca y muestra menú de selección
-- `!dbz` / `!anime` - playlists temáticas
-- `!coin` - cara o sello
+Todos los comandos son slash commands (`/`). El prefijo `!` ya no funciona.
+
+- `/play <url|búsqueda>` - reproduce o agrega a la cola
+- `/skip` - salta la canción actual
+- `/pause` / `/resume`
+- `/queue` - muestra la cola
+- `/shuffle` - mezcla la cola
+- `/clear` - vacía la cola
+- `/rq <pos>` - elimina canción por posición
+- `/stop` - detiene y desconecta
+- `/search <query>` - busca y muestra un menú de selección (visible solo para vos)
+- `/dbz` / `/anime` - playlists temáticas
+- `/coin` - cara o sello
+
+> **Notas:**
+> - Como fallback, podés invocar al bot mencionándolo: `@SSJBot play d4vd`.
+> - Los aliases anteriores (`!p`, `!s`, `!r`, `!q`, `!qc`, `!random`) fueron eliminados.
 
 ## Requisitos
 
@@ -28,6 +34,10 @@ Bot de música para Discord (YouTube via `yt-dlp` + `ffmpeg`). Pensado para corr
    ```dotenv
    DISCORD_TOKEN=tu_token
    LOG_LEVEL=INFO
+   # IDs de servidores donde registrar slash commands (separados por coma).
+   # Si está vacío, los comandos se registran globalmente (tarda hasta 1h en aparecer).
+   # Para obtener un ID: activá Modo Desarrollador en Discord → click derecho al server → Copiar ID.
+   GUILD_IDS=
    # Opcional: cookies de YouTube
    # YTDL_COOKIES=/app/cookies/cookies.txt
    ```
@@ -89,6 +99,10 @@ Pegar el siguiente contenido y reemplazar el token por el real:
 ```dotenv
 DISCORD_TOKEN=tu_token_real_aqui
 LOG_LEVEL=INFO
+# IDs de servidores donde registrar slash commands (separados por coma).
+# Si está vacío, los comandos se registran globalmente (tarda hasta 1h en aparecer).
+# Para obtener un ID: activá Modo Desarrollador en Discord → click derecho al server → Copiar ID.
+GUILD_IDS=
 # Opcional, descomentar solo si configurás cookies (ver sección
 # "Cookies de YouTube" más abajo)
 # YTDL_COOKIES=/app/cookies/cookies.txt

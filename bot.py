@@ -3,12 +3,34 @@ import sys
 import asyncio
 import logging
 import discord
+from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
 # Load environment variables from the .env file
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
+
+
+def _parse_guild_ids(raw: str | None) -> list[int]:
+    """Parse comma-separated guild IDs from env var. Skips invalid tokens."""
+    if not raw:
+        return []
+    out: list[int] = []
+    for piece in raw.split(","):
+        piece = piece.strip()
+        if not piece:
+            continue
+        try:
+            out.append(int(piece))
+        except ValueError:
+            logging.getLogger("ssj-bot").warning(
+                "Ignorando GUILD_IDS inválido: %r", piece
+            )
+    return out
+
+
+GUILD_IDS = _parse_guild_ids(os.getenv("GUILD_IDS"))
 
 # Configure logging
 logging.basicConfig(
@@ -22,13 +44,61 @@ logger = logging.getLogger("ssj-bot")
 intents = discord.Intents.all()
 
 # Initialize the bot with a command prefix and intents
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
 
 
 @bot.event
 async def on_ready():
     """Event triggered when the bot has connected to Discord."""
     logger.info(f"{bot.user.name} conectado en {len(bot.guilds)} servidor(es).")
+    await _sync_app_commands()
+
+
+async def _sync_app_commands():
+    """Sync slash commands. Per-guild if GUILD_IDS set, else global."""
+    if GUILD_IDS:
+        success = 0
+        for gid in GUILD_IDS:
+            try:
+                await bot.tree.sync(guild=discord.Object(id=gid))
+                success += 1
+            except Exception as e:
+                logger.warning("Sync falló para guild %s: %s", gid, e)
+        logger.info(
+            "Slash commands sincronizados en %d/%d guild(s).",
+            success,
+            len(GUILD_IDS),
+        )
+    else:
+        try:
+            await bot.tree.sync()
+            logger.info(
+                "Slash commands sincronizados globalmente (puede tardar hasta 1h)."
+            )
+        except Exception as e:
+            logger.error("Sync global falló: %s", e)
+
+
+@bot.tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction,
+    error: app_commands.AppCommandError,
+):
+    """Catch unhandled errors from slash commands."""
+    logger.error(
+        "Error en slash command %s: %s",
+        interaction.command.name if interaction.command else "?",
+        error,
+        exc_info=True,
+    )
+    msg = "Ocurrió un error inesperado."
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+    except Exception as e:
+        logger.error("No pude enviar mensaje de error al usuario: %s", e)
 
 
 async def load_cogs():
