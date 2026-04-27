@@ -86,9 +86,13 @@ Per-command modifications:
   for parameters. Add `ctx: commands.Context` to all signatures and type
   annotations to user-facing parameters.
 
-- **`*, search: str` becomes `search: str`**: the keyword-only marker is
-  a known quirk in hybrid commands and is unnecessary; slash command
-  string parameters accept spaces natively.
+- **Preserve `*, search: str` (consume-rest)**: hybrid commands do
+  support keyword-only string arguments (per discord.py docs, e.g.
+  `tag create(ctx, name: str, *, content: str)`). Keeping `*,` ensures
+  multi-word queries work via the prefix/mention fallback (e.g.
+  `@SSJBot play d4vd romantic homicide`). On the slash side, the
+  parameter is treated as a single string that accepts spaces natively,
+  so the marker is harmless.
 
 - **`defer()` on slow commands**: `play`, `dbz`, `anime`, `search` start
   with `await ctx.defer()` to avoid the 3-second slash command response
@@ -96,7 +100,7 @@ Per-command modifications:
   `interaction.followup.send` automatically.
 
 - **`play()` split into public/internal**:
-  - `play(self, ctx, search: str)` is the hybrid command (no `silent`
+  - `play(self, ctx, *, search: str)` is the hybrid command (no `silent`
     parameter exposed).
   - `_play_internal(self, ctx, search: str, silent: bool = False)` is a
     private helper containing the existing logic. `play()` delegates to
