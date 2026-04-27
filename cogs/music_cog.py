@@ -254,6 +254,10 @@ class Music(commands.Cog):
 
             s.actual_song = s.queue[0]["title"]
             song = s.queue.pop(0)
+            logger.info(
+                "starting playback in guild %s: %r",
+                ctx.guild.id if ctx.guild else None, s.actual_song,
+            )
             url = song["url"]
             logger.debug(f"Preparando reproducción: {song['title']}")
             logger.debug(
@@ -397,6 +401,7 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name="dbz", description="Reproduce la playlist de Dragon Ball Z")
     async def dbz(self, ctx: commands.Context):
+        logger.info("dbz invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         await ctx.defer()
         if not await self.join_voice_channel(ctx):
             return
@@ -404,6 +409,7 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name="anime", description="Reproduce la playlist de Anime")
     async def anime(self, ctx: commands.Context):
+        logger.info("anime invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         await ctx.defer()
         if not await self.join_voice_channel(ctx):
             return
@@ -411,6 +417,10 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name="play", description="Play a song or playlist")
     async def play(self, ctx: commands.Context, *, search: str):
+        logger.info(
+            "play invoked by %s in guild %s: query=%r",
+            ctx.author, ctx.guild.id if ctx.guild else None, search,
+        )
         await ctx.defer()
         await self._play_internal(ctx, search, silent=False)
 
@@ -579,24 +589,33 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name="skip", description="Skips the current song.")
     async def skip(self, ctx: commands.Context):
+        logger.info("skip invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
             await ctx.send("Se skipeó la canción actual.")
             self.update_activity(ctx)  # Update activity when skipping
+        else:
+            await ctx.send("No hay nada que skipear.")
 
     @commands.hybrid_command(name="pause", description="Pauses the current song.")
     async def pause(self, ctx: commands.Context):
+        logger.info("pause invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
             await ctx.send("Se ha pausado la reproducción.")
             self.update_activity(ctx)  # Update activity when pausing
+        else:
+            await ctx.send("No hay nada reproduciéndose para pausar.")
 
     @commands.hybrid_command(name="resume", description="Resumes the paused song.")
     async def resume(self, ctx: commands.Context):
+        logger.info("resume invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
             await ctx.send("Se ha reanudado la reproducción.")
             self.update_activity(ctx)  # Update activity when resuming
+        else:
+            await ctx.send("No hay nada pausado para reanudar.")
 
     @commands.hybrid_command(name="queue", description="Displays the current song queue.")
     async def queue(self, ctx: commands.Context):
@@ -648,6 +667,7 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name="coin", description="Flips a coin.")
     async def coin(self, ctx: commands.Context):
+        logger.info("coin invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         result = random.choice(["Cara", "Sello"])
         await ctx.send(f"Resultado: **{result}**")
 
@@ -743,6 +763,10 @@ class Music(commands.Cog):
 
     @commands.hybrid_command(name="search", description="Searches for a song on YouTube.")
     async def search(self, ctx: commands.Context, *, query: str):
+        logger.info(
+            "search invoked by %s in guild %s: query=%r",
+            ctx.author, ctx.guild.id if ctx.guild else None, query,
+        )
         await ctx.defer()
         search_options = YTDL_OPTIONS.copy()
         search_options.pop("playlist_items", None)
@@ -787,6 +811,12 @@ class SearchSelect(discord.ui.Select):
         index = int(self.values[0])
         selected_entry = self.entries[index]
         title = selected_entry["title"]
+        logger.info(
+            "search selection by %s in guild %s: %r",
+            interaction.user,
+            interaction.guild.id if interaction.guild else None,
+            title,
+        )
 
         video_id = selected_entry["id"]
         if not video_id:
@@ -837,7 +867,7 @@ class SearchSelect(discord.ui.Select):
             await self.music_cog.play_next_in_queue(self.ctx)
 
         await interaction.message.delete()
-        self.stop()
+        self.view.stop()
 
 
 class SearchView(discord.ui.View):

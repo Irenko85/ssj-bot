@@ -101,6 +101,21 @@ async def on_app_command_error(
         logger.error("No pude enviar mensaje de error al usuario: %s", e)
 
 
+async def handle_command_error(ctx, error):
+    """Global handler for prefix/mention command errors.
+
+    Silences CommandNotFound (typos like !d, !aaa) to avoid log spam now
+    that the prefix is disabled. Re-raises everything else so real bugs
+    still get logged by discord.py's default behavior.
+    """
+    if isinstance(error, commands.CommandNotFound):
+        return
+    raise error
+
+
+bot.add_listener(handle_command_error, "on_command_error")
+
+
 async def load_cogs():
     """Loads all the necessary cogs for the bot."""
     await bot.load_extension("cogs.music_cog")
