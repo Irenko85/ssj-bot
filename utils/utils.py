@@ -1,25 +1,34 @@
+import asyncio
 import yt_dlp
 from urllib.parse import urlparse, parse_qs, urlunparse, urlencode
 
 
-def get_video_urls_from_playlist(playlist_url: str) -> list:
-    """Get video URLs from a YouTube playlist using yt-dlp."""
+async def get_video_urls_from_playlist(playlist_url: str) -> list:
+    """Get video URLs from a YouTube playlist using yt-dlp (async, non-blocking)."""
     ydl_opts = {
         "quiet": True,
         "extract_flat": True,
         "skip_download": True,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info = ydl.extract_info(playlist_url, download=False)
-            return [
-                f"https://www.youtube.com/watch?v={entry['id']}"
-                for entry in info["entries"]
-                if "id" in entry
-            ]
-        except Exception as e:
-            print(f"Error al obtener la playlist: {e}")
-            return []
+
+    def _do_extract():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            return ydl.extract_info(playlist_url, download=False)
+
+    try:
+        info = await asyncio.wait_for(asyncio.to_thread(_do_extract), timeout=30)
+    except asyncio.TimeoutError:
+        print("Playlist extraction timed out")
+        return []
+    except Exception as e:
+        print(f"Error al obtener la playlist: {e}")
+        return []
+
+    return [
+        f"https://www.youtube.com/watch?v={entry['id']}"
+        for entry in info.get("entries", [])
+        if "id" in entry
+    ]
 
 
 def clean_yt_link(link: str) -> str:
