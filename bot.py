@@ -9,8 +9,6 @@ from dotenv import load_dotenv
 # Load environment variables from the .env file
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-GUILD_ID = os.getenv("GUILD_ID")
-GUILD_ID = int(GUILD_ID) if GUILD_ID else None
 
 # Configure logging
 logging.basicConfig(
@@ -30,13 +28,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 @bot.event
 async def on_ready():
     """Event triggered when the bot has connected to Discord."""
-    logger.info(f"{bot.user.name} conectado.")
-    if GUILD_ID:
-        guild = discord.utils.get(bot.guilds, id=GUILD_ID)
-        if guild:
-            logger.info(f"Conectado al servidor {guild.name}.")
-        else:
-            logger.warning("No se encontró el servidor con el GUILD_ID configurado.")
+    logger.info(f"{bot.user.name} conectado en {len(bot.guilds)} servidor(es).")
 
 
 async def load_cogs():
