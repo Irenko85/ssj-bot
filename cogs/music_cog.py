@@ -395,14 +395,16 @@ class Music(commands.Cog):
         else:
             logger.debug("check_inactivity ya está corriendo")
 
-    @commands.command(name="dbz", help="Reproduce la playlist de Dragon Ball Z")
-    async def dbz(self, ctx):
+    @commands.hybrid_command(name="dbz", description="Reproduce la playlist de Dragon Ball Z")
+    async def dbz(self, ctx: commands.Context):
+        await ctx.defer()
         if not await self.join_voice_channel(ctx):
             return
         await self.play_playlist(ctx, DBZ_PLAYLIST_URL, shuffle=True)
 
-    @commands.command(name="anime", help="Reproduce la playlist de Anime")
-    async def anime(self, ctx):
+    @commands.hybrid_command(name="anime", description="Reproduce la playlist de Anime")
+    async def anime(self, ctx: commands.Context):
+        await ctx.defer()
         if not await self.join_voice_channel(ctx):
             return
         await self.play_playlist(ctx, ANIME_PLAYLIST_URL, shuffle=True)
@@ -564,8 +566,8 @@ class Music(commands.Cog):
             logger.error("voice_client no está conectado después de join_voice_channel")
             await ctx.send("Error: No se pudo establecer conexión con el canal de voz.")
 
-    @commands.command(name="stop", help="Stops playback and leaves the voice channel.")
-    async def stop(self, ctx):
+    @commands.hybrid_command(name="stop", description="Stops playback and leaves the voice channel.")
+    async def stop(self, ctx: commands.Context):
         if ctx.voice_client:
             s = self._state(ctx)
             s.queue.clear()
@@ -575,31 +577,29 @@ class Music(commands.Cog):
             self._cleanup_state(ctx.guild.id)
             # The check_inactivity loop stops itself once self.states is empty
 
-    @commands.command(name="skip", aliases=["s"], help="Skips the current song.")
-    async def skip(self, ctx):
+    @commands.hybrid_command(name="skip", description="Skips the current song.")
+    async def skip(self, ctx: commands.Context):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
             await ctx.send("Se skipeó la canción actual.")
             self.update_activity(ctx)  # Update activity when skipping
 
-    @commands.command(name="pause", help="Pauses the current song.")
-    async def pause(self, ctx):
+    @commands.hybrid_command(name="pause", description="Pauses the current song.")
+    async def pause(self, ctx: commands.Context):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
             await ctx.send("Se ha pausado la reproducción.")
             self.update_activity(ctx)  # Update activity when pausing
 
-    @commands.command(name="resume", aliases=["r"], help="Resumes the paused song.")
-    async def resume(self, ctx):
+    @commands.hybrid_command(name="resume", description="Resumes the paused song.")
+    async def resume(self, ctx: commands.Context):
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
             await ctx.send("Se ha reanudado la reproducción.")
             self.update_activity(ctx)  # Update activity when resuming
 
-    @commands.command(
-        name="queue", aliases=["q"], help="Displays the current song queue."
-    )
-    async def queue(self, ctx):
+    @commands.hybrid_command(name="queue", description="Displays the current song queue.")
+    async def queue(self, ctx: commands.Context):
         s = self._state(ctx)
         if s.queue:
             queue_list = "\n".join(
@@ -612,10 +612,10 @@ class Music(commands.Cog):
             await ctx.send("La cola está vacía.")
         self.update_activity(ctx)  # Update activity when viewing queue
 
-    @commands.command(
-        name="rq", help="Removes a song from the queue by its position in the list."
+    @commands.hybrid_command(
+        name="rq", description="Removes a song from the queue by its position in the list."
     )
-    async def remove_from_queue(self, ctx, position: int):
+    async def remove_from_queue(self, ctx: commands.Context, position: int):
         s = self._state(ctx)
         if not s.queue:
             await ctx.send("La cola está vacía.")
@@ -630,14 +630,14 @@ class Music(commands.Cog):
                 "Posición inválida. Asegúrate de que el número esté dentro del rango de la cola."
             )
 
-    @commands.command(name="clear", aliases=["qc"], help="Clears the song queue.")
-    async def clear(self, ctx):
+    @commands.hybrid_command(name="clear", description="Clears the song queue.")
+    async def clear(self, ctx: commands.Context):
         self._state(ctx).queue.clear()
         await ctx.send("La cola se vació.")
         self.update_activity(ctx)  # Update activity when clearing queue
 
-    @commands.command(name="shuffle", help="Shuffles the song queue.")
-    async def shuffle(self, ctx):
+    @commands.hybrid_command(name="shuffle", description="Shuffles the song queue.")
+    async def shuffle(self, ctx: commands.Context):
         s = self._state(ctx)
         if len(s.queue) > 0:
             random.shuffle(s.queue)
@@ -646,8 +646,8 @@ class Music(commands.Cog):
         else:
             await ctx.send("La cola está vacía.")
 
-    @commands.command(name="coin", aliases=["random"], help="Flips a coin.")
-    async def coin(self, ctx):
+    @commands.hybrid_command(name="coin", description="Flips a coin.")
+    async def coin(self, ctx: commands.Context):
         result = random.choice(["Cara", "Sello"])
         await ctx.send(f"Resultado: **{result}**")
 
@@ -741,8 +741,9 @@ class Music(commands.Cog):
                 # Continue with the other guilds; do not stop the whole loop
                 continue
 
-    @commands.command(name="search", help="Searches for a song on YouTube.")
-    async def search(self, ctx, *, query: str):
+    @commands.hybrid_command(name="search", description="Searches for a song on YouTube.")
+    async def search(self, ctx: commands.Context, *, query: str):
+        await ctx.defer()
         search_options = YTDL_OPTIONS.copy()
         search_options.pop("playlist_items", None)
         search_options["extract_flat"] = True
