@@ -1,4 +1,4 @@
-# Search Fallback: Skip All DownloadErrors
+# Search Fallback: Resilient Candidate Selection
 
 **Date:** 2026-04-27
 **Branch:** `fix/search-fallback-skip-errors`
@@ -6,125 +6,160 @@
 
 ## Problem
 
-Cuando el usuario ejecuta `!play <query>` (input no-URL), el bot hace
-`ytsearch5:<query>` con `extract_flat=True` y obtiene hasta 5 entries.
-Itera construyendo `https://www.youtube.com/watch?v={video_id}` y llama
-`_extract_info` por cada candidato hasta que uno funcione.
+Cuando el usuario ejecuta `!play <query>` (input no-URL), el bot debería
+buscar en YouTube, encontrar un video del artista y reproducirlo. En la
+práctica, `!play d4vd` mostraba "No se encontró un formato compatible para
+los resultados." aunque d4vd tiene videos públicos sobrados en YouTube.
 
-El bloque `except` actual (`cogs/music_cog.py:492-498`) solo trata como
+Investigación reveló **dos bugs combinados** en el path de búsqueda
+(`cogs/music_cog.py`):
+
+### Bug 1 (causa raíz): `playlist_items: "1"` aplica a ytsearch5
+
+La constante global `YTDL_OPTIONS` en línea 31 tiene `"playlist_items": "1"`
+para limitar playlists reales a un solo video. Pero `ytsearch5:<query>` se
+trata internamente como una playlist de 5 elementos, y `playlist_items: "1"`
+**también la corta a 1 sola entry**.
+
+Resultado: en lugar de obtener 5 candidatos, el bot recibe 1, y a menudo es
+el canal del artista (`ie_key='YoutubeTab'`), no un video.
+
+El comando `!search` (línea 734) ya conoce el problema y hace
+`search_options.pop("playlist_items", None)`. El path de `!play <query>`
+(línea 488) **no lo hace**, así que sufre el bug.
+
+### Bug 2: el except del fallback solo skipea un tipo de error
+
+El bloque `except` del loop (`cogs/music_cog.py:492-498`) solo trata como
 recuperable el error `"Requested format is not available"`. Cualquier otro
-`DownloadError` (ej. `"Video unavailable"`, `"Private video"`,
-`"This video has been removed"`) hace `raise`, abortando todo el comando.
+`DownloadError` (ej. `"Video unavailable"` cuando el "video" es en realidad
+un channel ID) hace `raise`, abortando el comando completo.
 
-**Caso real observado:** `!play d4vd` → primer entry tenía `id` =
-`UC98WsFnuhf` (un channel ID, no un video ID). `_extract_info` falla con
-`"Video unavailable"` → el comando aborta sin probar los otros 4 candidatos.
+### Caso real observado
+
+`!play d4vd`:
+
+1. `ytsearch5:d4vd` con `playlist_items: "1"` devuelve 1 sola entry.
+2. La entry es el channel `UC98WsFnuhfS3uT8PwdYCjbw` con `ie_key='YoutubeTab'`.
+3. Construir `https://www.youtube.com/watch?v=UC98WsFnuhfS3uT8PwdYCjbw`
+   y extraerlo lanza `DownloadError: Video unavailable`.
+4. El except solo skipea "Requested format is not available" → `raise` →
+   comando aborta con stack trace.
+
+Sin el bug 1, `entries` tendría 5 elementos: 1 channel y 4 videos.
+Sin el bug 2, el loop ya saltaría al siguiente. Los dos juntos rompen
+totalmente la búsqueda.
 
 ## Goal
 
-El loop de búsqueda debe continuar al siguiente candidato ante **cualquier**
-`yt_dlp.utils.DownloadError`, no solo "Requested format is not available".
-Si todos los candidatos fallan, mostrar el mensaje de error existente al
-usuario.
+`!play <query>` debe:
+
+1. Recibir hasta 5 candidatos reales del search.
+2. Saltarse channels/playlists (no son reproducibles como video).
+3. Saltarse videos no disponibles (privados, removidos, etc.).
+4. Reproducir el primer candidato que extraiga ok.
+5. Si **ningún** candidato funciona, mostrar el mensaje de error existente.
 
 ## Non-Goals
 
-- No filtrar entries no-video antes del loop (sería más preciso pero
-  requiere identificar campos confiables de yt-dlp; YAGNI por ahora).
-- No cambiar el límite `ytsearch5:` ni el orden de candidatos.
-- No tocar el path de URL directa (líneas 449-464).
+- No tocar el path de URL directa.
+- No cambiar `ytsearch5:` a otro límite.
+- No reemplazar el message de error final.
+- No agregar reintentos por candidato individual (yt-dlp ya reintenta
+  internamente clientes ios/android/tv/web).
 
 ## Approach
 
-### Refactor mínimo para testabilidad
+### Cambio 1: `pop("playlist_items", ...)` en search_opts
 
-El loop está embebido dentro de `play()`, una función de ~150 líneas con
-mucho contexto (`ctx`, `voice_client`, `SafeYoutubeDL` ya abierto, estado
-de la guild). Testear el loop inline requeriría mockear demasiado.
-
-Extraemos el loop a un helper privado de `Music`:
+Replicar el patrón ya existente en línea 734. Una sola línea agregada
+después de copiar `YTDL_OPTIONS`:
 
 ```python
-async def _select_first_playable_candidate(self, ydl, entries):
-    """Itera entries de ytsearch y devuelve el info del primer candidato
-    que extraiga sin DownloadError. Devuelve None si todos fallan o si
-    no hay entries con id válido."""
-    for entry in entries:
-        video_id = entry.get("id") or entry.get("url")
-        if not video_id:
-            continue
-        candidate_url = f"https://www.youtube.com/watch?v={video_id}"
-        try:
-            return await self._extract_info(ydl, candidate_url, download=False)
-        except yt_dlp.utils.DownloadError as e:
-            reason = str(e)[:200]
-            logger.warning(
-                f"Candidato {video_id} no disponible, probando otro: {reason}"
-            )
-            continue
-    return None
+search_opts = YTDL_OPTIONS.copy()
+search_opts["extract_flat"] = True
+search_opts["skip_download"] = True
+search_opts.pop("playlist_items", None)  # NUEVO
 ```
 
-El callsite en `play()` se reduce a:
+Esto hace que `ytsearch5:` devuelva las 5 entries reales.
+
+### Cambio 2: filtrar entries no-video antes del loop
+
+Después de obtener `entries` y antes de pasarlas al helper, filtrar:
 
 ```python
-info = await self._select_first_playable_candidate(ydl, entries)
-if not info:
-    await ctx.send(
-        "No se encontró un formato compatible para los resultados."
-    )
-    return
+playable_entries = [
+    e for e in entries
+    if e.get("ie_key") == "Youtube"
+]
 ```
 
-### Cambio funcional
+`ie_key == "Youtube"` identifica videos individuales. Channels son
+`YoutubeTab`, playlists son `YoutubePlaylist`, etc. Mantenemos solo
+videos.
 
-- **Antes:** solo `"Requested format is not available"` → `continue`,
-  el resto → `raise`.
-- **Después:** cualquier `DownloadError` → `continue` con `logger.warning`
-  que incluye `video_id` y razón truncada a 200 chars.
-- Errores que **no** sean `DownloadError` siguen propagándose (timeouts del
-  helper, bugs de programación, etc.). Conservador.
+Si después del filtro `playable_entries` está vacío, mostramos el mismo
+mensaje de error que cuando no hay resultados.
+
+### Cambio 3: helper `_select_first_playable_candidate`
+
+Refactor para testabilidad (ya implementado en commits previos de esta
+branch). El helper itera entries y skipea **cualquier** `DownloadError`
+con un warning descriptivo. Devuelve el primer info exitoso, o `None`
+si todos fallan.
 
 ### Comportamiento conservado
 
-- Si `entries` está vacío, el chequeo previo en `play()`
-  (`if not entries: return`) sigue siendo el responsable.
-- El chequeo `if not info:` post-helper se mantiene idéntico.
-- El mensaje de usuario en caso de fallo total no cambia.
+- Si `entries` está vacío post-search, mensaje "No se encontraron
+  resultados."
+- Si `playable_entries` está vacío post-filtro, mismo mensaje (o el
+  de "No se encontró un formato compatible", a evaluar).
+- Si todos los candidatos fallan en el helper, mensaje
+  "No se encontró un formato compatible para los resultados."
 
 ## Testing
 
-### Test único (TDD red→green)
+### Test 1 (ya existe): helper skipea DownloadError
 
-`tests/test_select_candidate.py::test_skips_unavailable_and_returns_next`:
+`tests/test_select_candidate.py::test_skips_unavailable_and_returns_next`.
 
-- Mock de `Music._extract_info` con `side_effect = [DownloadError("Video
-  unavailable"), {"url": "ok", "title": "ok"}]`.
-- Llamar `_select_first_playable_candidate` con 2 entries.
-- Assert: devuelve el segundo dict.
-- Assert: `_extract_info` llamado 2 veces.
+### Test 2 (nuevo): filtro deja pasar solo videos
 
-Este test fallaría con el código actual (el primer error abortaría con
-`raise`) y pasa con el fix.
+`tests/test_select_candidate.py::test_filters_non_video_entries` —
+verificar que dada una lista mixta (channel + 2 videos), el helper
+solo intenta los 2 videos.
 
-No agregamos tests de "todos fallan" ni "ningún entry válido" — el
-comportamiento de retornar `None` en esos paths es trivial y el helper
-es de 10 líneas; YAGNI.
+Nota: el filtro vive en `play()`, no en el helper. Pero podemos
+testear el comportamiento end-to-end del helper ante entries
+pre-filtradas (asegurarnos que entries con `id` válido se procesan
+en orden), y testear el filtro a nivel de comprensión por inspección
+de código + smoke test (no merece su propio test unitario porque es
+una list comprehension trivial).
+
+Decisión simplificada: **no agregar test 2**. El filtro es 1 línea
+trivial y el smoke test cubre el comportamiento real.
+
+### Smoke test final
+
+`!play d4vd` debe reproducir un video de d4vd (cualquiera de los
+4 videos en entries 1-4 de ytsearch5).
 
 ## Risks
 
-- **Esconder bugs reales:** ampliar el except podría enmascarar problemas
-  serios (ej. cookies inválidas que afecten a TODOS los videos). Mitigado
-  por el `logger.warning` por candidato y el mensaje al usuario cuando
-  todos fallan. El usuario verá "No se encontró un formato compatible" y
-  los logs tendrán 5 warnings detallados.
-- **Errores no-DownloadError:** si yt-dlp lanza otra excepción
-  (ej. `ExtractorError` directo), no se skipea. Aceptable: son raros y
-  típicamente indican fallas más serias.
+- **Test del filtro omitido:** trade-off explícito de simplicidad.
+  Si el filtro futuro crece, agregar test.
+- **`ie_key == "Youtube"` muy estricto:** puede que yt-dlp use otros
+  ie_keys para videos válidos (ej. `YoutubeShort`). Verificación:
+  el smoke test confirmará. Si falta cobertura, se ajusta a
+  `ie_key in {"Youtube", ...}`.
+- **`pop("playlist_items")` puede romper otros flows:** No, porque
+  `search_opts` es una copia local. La constante global queda
+  intacta.
 
 ## Acceptance Criteria
 
-1. Test nuevo pasa.
-2. Tests existentes (5) siguen pasando.
-3. Smoke test: `!play d4vd` reproduce sin abortar.
-4. Logs muestran warning con `video_id` cuando un candidato es skipeado.
+1. Tests existentes (6) siguen pasando.
+2. `!play d4vd` reproduce un video del artista (smoke test).
+3. Logs muestran filtrado de channel + intento exitoso de video.
+4. Diff focused: ~5 líneas modificadas en `cogs/music_cog.py`.
