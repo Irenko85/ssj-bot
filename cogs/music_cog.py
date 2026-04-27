@@ -372,7 +372,7 @@ class Music(commands.Cog):
 
         for url in video_urls:
             try:
-                await self.play(ctx, search=url, silent=True)
+                await self._play_internal(ctx, url, silent=True)
             except Exception as e:
                 await ctx.send(f"Error al reproducir una canción de la playlist.")
                 logger.error(f"Error reproduciendo playlist: {e}")
@@ -407,8 +407,12 @@ class Music(commands.Cog):
             return
         await self.play_playlist(ctx, ANIME_PLAYLIST_URL, shuffle=True)
 
-    @commands.command(name="play", aliases=["p"], description="Play a song or playlist")
-    async def play(self, ctx, *, search: str, silent: bool = False):
+    @commands.hybrid_command(name="play", description="Play a song or playlist")
+    async def play(self, ctx: commands.Context, search: str):
+        await ctx.defer()
+        await self._play_internal(ctx, search, silent=False)
+
+    async def _play_internal(self, ctx, search: str, silent: bool = False):
         try:
             logger.debug(f"Comando play ejecutado con search: {search}")
             join_result = await self.join_voice_channel(ctx)
