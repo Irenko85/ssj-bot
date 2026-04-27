@@ -583,6 +583,8 @@ class Music(commands.Cog):
             ctx.voice_client.stop()
             await ctx.send("Se skipeó la canción actual.")
             self.update_activity(ctx)  # Update activity when skipping
+        else:
+            await ctx.send("No hay nada que skipear.")
 
     @commands.hybrid_command(name="pause", description="Pauses the current song.")
     async def pause(self, ctx: commands.Context):
@@ -590,6 +592,8 @@ class Music(commands.Cog):
             ctx.voice_client.pause()
             await ctx.send("Se ha pausado la reproducción.")
             self.update_activity(ctx)  # Update activity when pausing
+        else:
+            await ctx.send("No hay nada reproduciéndose para pausar.")
 
     @commands.hybrid_command(name="resume", description="Resumes the paused song.")
     async def resume(self, ctx: commands.Context):
@@ -597,6 +601,8 @@ class Music(commands.Cog):
             ctx.voice_client.resume()
             await ctx.send("Se ha reanudado la reproducción.")
             self.update_activity(ctx)  # Update activity when resuming
+        else:
+            await ctx.send("No hay nada pausado para reanudar.")
 
     @commands.hybrid_command(name="queue", description="Displays the current song queue.")
     async def queue(self, ctx: commands.Context):
