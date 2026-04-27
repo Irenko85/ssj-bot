@@ -762,7 +762,7 @@ class Music(commands.Cog):
             return
 
         view = SearchView(entries, self, ctx)
-        await ctx.send(view=view)
+        await ctx.send(view=view, ephemeral=ctx.interaction is not None)
         self.update_activity(ctx)  # Update activity when searching
 
 
