@@ -30,3 +30,15 @@ async def test_extract_info_runs_in_worker_thread():
     await cog._extract_info(fake_ydl, "https://example.com")
 
     assert captured_thread_id["id"] != main_thread_id
+
+
+@pytest.mark.asyncio
+async def test_extract_info_returns_value():
+    cog = _make_cog()
+    fake_ydl = Mock()
+    fake_ydl.extract_info = Mock(return_value={"title": "song", "url": "u"})
+
+    result = await cog._extract_info(fake_ydl, "https://example.com")
+
+    assert result == {"title": "song", "url": "u"}
+    fake_ydl.extract_info.assert_called_once_with("https://example.com")
