@@ -55,12 +55,21 @@ async def on_ready():
 
 
 async def _sync_app_commands():
-    """Sync slash commands. Per-guild if GUILD_IDS set, else global."""
+    """Sync slash commands. Per-guild if GUILD_IDS set, else global.
+
+    Hybrid commands register globally in bot.tree by default. To make
+    them appear instantly per-guild we must copy_global_to(guild=X)
+    before sync(guild=X). Otherwise the per-guild sync registers an
+    empty list silently and users see no slash commands.
+    """
     if GUILD_IDS:
         success = 0
         for gid in GUILD_IDS:
             try:
-                await bot.tree.sync(guild=discord.Object(id=gid))
+                guild_obj = discord.Object(id=gid)
+                bot.tree.copy_global_to(guild=guild_obj)
+                synced = await bot.tree.sync(guild=guild_obj)
+                logger.info("Sync guild %s: %d comandos.", gid, len(synced))
                 success += 1
             except Exception as e:
                 logger.warning("Sync falló para guild %s: %s", gid, e)
@@ -71,9 +80,11 @@ async def _sync_app_commands():
         )
     else:
         try:
-            await bot.tree.sync()
+            synced = await bot.tree.sync()
             logger.info(
-                "Slash commands sincronizados globalmente (puede tardar hasta 1h)."
+                "Slash commands sincronizados globalmente: %d comandos "
+                "(puede tardar hasta 1h en aparecer).",
+                len(synced),
             )
         except Exception as e:
             logger.error("Sync global falló: %s", e)
