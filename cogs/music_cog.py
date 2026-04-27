@@ -837,7 +837,7 @@ class SearchSelect(discord.ui.Select):
             await self.music_cog.play_next_in_queue(self.ctx)
 
         await interaction.message.delete()
-        self.stop()
+        self.view.stop()
 
 
 class SearchView(discord.ui.View):
