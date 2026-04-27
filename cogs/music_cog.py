@@ -767,7 +767,7 @@ class Music(commands.Cog):
             "search invoked by %s in guild %s: query=%r",
             ctx.author, ctx.guild.id if ctx.guild else None, query,
         )
-        await ctx.defer()
+        await ctx.defer(ephemeral=ctx.interaction is not None)
         search_options = YTDL_OPTIONS.copy()
         search_options.pop("playlist_items", None)
         search_options["extract_flat"] = True
