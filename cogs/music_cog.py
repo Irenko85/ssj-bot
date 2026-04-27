@@ -444,7 +444,7 @@ class Music(commands.Cog):
                             logger.debug(f"URL limpio: {search}")
                             logger.debug("Extrayendo información del video...")
                             try:
-                                info = ydl.extract_info(search, download=False)
+                                info = await self._extract_info(ydl, search, download=False)
                             except yt_dlp.utils.DownloadError as e:
                                 if "Requested format is not available" in str(e):
                                     logger.warning(
@@ -453,8 +453,8 @@ class Music(commands.Cog):
                                     fallback_opts = YTDL_OPTIONS.copy()
                                     fallback_opts["format"] = "best"
                                     with SafeYoutubeDL(fallback_opts) as ydl_fb:
-                                        info = ydl_fb.extract_info(
-                                            search, download=False
+                                        info = await self._extract_info(
+                                            ydl_fb, search, download=False
                                         )
                                 else:
                                     raise
@@ -468,8 +468,8 @@ class Music(commands.Cog):
                             search_opts["extract_flat"] = True
                             search_opts["skip_download"] = True
                             with SafeYoutubeDL(search_opts) as ydl_search:
-                                search_info = ydl_search.extract_info(
-                                    f"ytsearch5:{search}", download=False
+                                search_info = await self._extract_info(
+                                    ydl_search, f"ytsearch5:{search}", download=False
                                 )
                             entries = search_info.get("entries") or []
                             if not entries:
@@ -485,8 +485,8 @@ class Music(commands.Cog):
                                     f"https://www.youtube.com/watch?v={video_id}"
                                 )
                                 try:
-                                    info = ydl.extract_info(
-                                        candidate_url, download=False
+                                    info = await self._extract_info(
+                                        ydl, candidate_url, download=False
                                     )
                                     break
                                 except yt_dlp.utils.DownloadError as e:
@@ -733,7 +733,7 @@ class Music(commands.Cog):
         async with ctx.typing():
             with SafeYoutubeDL(search_options) as ydl:
                 try:
-                    info = ydl.extract_info(f"ytsearch5:{query}", download=False)
+                    info = await self._extract_info(ydl, f"ytsearch5:{query}", download=False)
                     entries = info.get("entries", [])
                 except Exception as e:
                     await ctx.send("Ocurrió un error al buscar la canción.")
@@ -780,7 +780,7 @@ class SearchSelect(discord.ui.Select):
         try:
             url = f"https://www.youtube.com/watch?v={video_id}"
             with SafeYoutubeDL(YTDL_OPTIONS) as ydl:
-                info = ydl.extract_info(url, download=False)
+                info = await self.music_cog._extract_info(ydl, url, download=False)
                 url = info["url"]
                 headers = self.music_cog._extract_http_headers(info, ydl)
         except Exception as e:
