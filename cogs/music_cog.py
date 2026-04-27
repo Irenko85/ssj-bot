@@ -138,6 +138,27 @@ class Music(commands.Cog):
             )
             raise
 
+    async def _select_first_playable_candidate(self, ydl, entries):
+        """Iterate ytsearch entries and return info for the first candidate
+        that extracts without DownloadError. Returns None if all fail or no
+        entry has a usable id."""
+        for entry in entries:
+            video_id = entry.get("id") or entry.get("url")
+            if not video_id:
+                continue
+            candidate_url = f"https://www.youtube.com/watch?v={video_id}"
+            try:
+                return await self._extract_info(
+                    ydl, candidate_url, download=False
+                )
+            except yt_dlp.utils.DownloadError as e:
+                reason = str(e)[:200]
+                logger.warning(
+                    f"Candidato {video_id} no disponible, probando otro: {reason}"
+                )
+                continue
+        return None
+
     def _state(self, ctx_or_guild) -> GuildState:
         """Return (or create) the GuildState for the relevant guild."""
         guild = (
@@ -476,26 +497,9 @@ class Music(commands.Cog):
                                 await ctx.send("No se encontraron resultados.")
                                 return
 
-                            info = None
-                            for entry in entries:
-                                video_id = entry.get("id") or entry.get("url")
-                                if not video_id:
-                                    continue
-                                candidate_url = (
-                                    f"https://www.youtube.com/watch?v={video_id}"
-                                )
-                                try:
-                                    info = await self._extract_info(
-                                        ydl, candidate_url, download=False
-                                    )
-                                    break
-                                except yt_dlp.utils.DownloadError as e:
-                                    if "Requested format is not available" in str(e):
-                                        logger.warning(
-                                            f"Format no disponible para {video_id}, probando otro resultado"
-                                        )
-                                        continue
-                                    raise
+                            info = await self._select_first_playable_candidate(
+                                ydl, entries
+                            )
 
                             if not info:
                                 await ctx.send(
