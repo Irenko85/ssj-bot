@@ -488,6 +488,7 @@ class Music(commands.Cog):
                             search_opts = YTDL_OPTIONS.copy()
                             search_opts["extract_flat"] = True
                             search_opts["skip_download"] = True
+                            search_opts.pop("playlist_items", None)
                             with SafeYoutubeDL(search_opts) as ydl_search:
                                 search_info = await self._extract_info(
                                     ydl_search, f"ytsearch5:{search}", download=False
@@ -495,6 +496,14 @@ class Music(commands.Cog):
                             entries = search_info.get("entries") or []
                             if not entries:
                                 await ctx.send("No se encontraron resultados.")
+                                return
+                            entries = [
+                                e for e in entries if e.get("ie_key") == "Youtube"
+                            ]
+                            if not entries:
+                                await ctx.send(
+                                    "No se encontraron videos reproducibles."
+                                )
                                 return
 
                             info = await self._select_first_playable_candidate(
