@@ -49,7 +49,7 @@ def test_build_now_playing_embed_adds_youtube_thumbnail():
     assert embed.title == "🎵 Ahora reproduciendo"
     assert embed.description == "**Cha-La Head-Cha-La**"
     assert embed.colour.value == COLOR_PRIMARY
-    assert embed.thumbnail.url == "https://img.youtube.com/vi/YnL70cee6qo/0.jpg"
+    assert embed.thumbnail.url == "https://i.ytimg.com/vi/YnL70cee6qo/maxresdefault.jpg"
     assert embed.footer.text.startswith("SSJ Bot · ")
 
 
@@ -97,7 +97,6 @@ def test_build_now_playing_embed_uses_explicit_thumbnail_and_duration():
             "title": "Cha-La Head-Cha-La",
             "thumbnail": "https://cdn.example/thumb.jpg",
             "duration": 213,
-            "webpage_url": "https://www.youtube.com/watch?v=YnL70cee6qo",
         }
     )
     assert embed.title == "🎵 Ahora reproduciendo"

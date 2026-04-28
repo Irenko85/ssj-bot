@@ -76,13 +76,11 @@ def build_now_playing_embed(song: dict) -> discord.Embed:
         colour=COLOR_PRIMARY,
     )
 
-    thumbnail = song.get("thumbnail")
-    if thumbnail:
-        embed.set_thumbnail(url=thumbnail)
-    else:
-        video_id = _extract_youtube_video_id(source_url)
-        if video_id:
-            embed.set_thumbnail(url=f"https://img.youtube.com/vi/{video_id}/0.jpg")
+    video_id = _extract_youtube_video_id(source_url)
+    if video_id:
+        embed.set_thumbnail(url=f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg")
+    elif song.get("thumbnail"):
+        embed.set_thumbnail(url=song["thumbnail"])
 
     duration = _format_duration(song.get("duration"))
     if duration:
