@@ -193,3 +193,14 @@ def test_build_search_results_embed_handles_empty_list():
 
     assert embed.title == "🔍 Resultados de búsqueda"
     assert embed.description == "No se encontraron resultados."
+
+
+import re
+
+
+def test_footer_text_format():
+    from utils.ui import _build_footer_text, BOT_LABEL
+
+    footer = _build_footer_text()
+    assert BOT_LABEL in footer
+    assert re.search(r"\d{2}:\d{2}", footer)

@@ -3,7 +3,6 @@ from __future__ import annotations
 import inspect
 import math
 import re
-
 import discord
 
 COLOR_PRIMARY = 0x6C3483
@@ -43,7 +42,8 @@ def build_info_embed(title: str, message: str) -> discord.Embed:
 
 
 def _build_footer_text() -> str:
-    return f"{BOT_LABEL} · {discord.utils.utcnow().strftime('%H:%M')}"
+    now = discord.utils.utcnow().astimezone()
+    return f"{BOT_LABEL} · {now.strftime('%H:%M')}"
 
 
 def _extract_youtube_video_id(url: str | None) -> str | None:
