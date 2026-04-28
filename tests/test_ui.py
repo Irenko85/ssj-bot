@@ -89,3 +89,37 @@ def test_build_added_to_queue_embed_shows_position():
     assert len(embed.fields) == 1
     assert embed.fields[0].name == "Posición en cola"
     assert embed.fields[0].value == "3"
+
+
+from utils.ui import build_queue_embed
+
+
+def test_build_queue_embed_handles_empty_queue():
+    embed = build_queue_embed([], now_playing="Nada")
+
+    assert embed.title == "📋 Cola de reproducción"
+    assert "▶ Ahora: Nada" in embed.description
+    assert "No hay canciones en cola." in embed.description
+    assert embed.footer.text == "Página 1/1 · 0 canciones en cola"
+
+
+def test_build_queue_embed_renders_single_song():
+    embed = build_queue_embed(
+        [{"title": "Dan Dan Kokoro Hikareteku"}],
+        now_playing="Cha-La Head-Cha-La",
+    )
+
+    assert "▶ Ahora: Cha-La Head-Cha-La" in embed.description
+    assert "1. Dan Dan Kokoro Hikareteku" in embed.description
+    assert embed.footer.text == "Página 1/1 · 1 canciones en cola"
+
+
+def test_build_queue_embed_paginates_results():
+    songs = [{"title": f"Song {i}"} for i in range(1, 16)]
+
+    embed = build_queue_embed(songs, now_playing="Song 0", page=2, page_size=10)
+
+    assert "11. Song 11" in embed.description
+    assert "15. Song 15" in embed.description
+    assert "10. Song 10" not in embed.description
+    assert embed.footer.text == "Página 2/2 · 15 canciones en cola"
