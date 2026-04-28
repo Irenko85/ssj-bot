@@ -74,3 +74,13 @@ def build_now_playing_embed(song: dict) -> discord.Embed:
 
     embed.set_footer(text=_build_footer_text())
     return embed
+
+
+def build_added_to_queue_embed(song: dict, position: int) -> discord.Embed:
+    embed = discord.Embed(
+        title="✅ Añadido a la cola",
+        description=song.get("title", "Título desconocido"),
+        colour=COLOR_SUCCESS,
+    )
+    embed.add_field(name="Posición en cola", value=str(position), inline=True)
+    return embed

@@ -75,3 +75,17 @@ def test_build_now_playing_embed_ignores_soundcloud_url():
 
     assert embed.title == "🎵 Ahora reproduciendo"
     assert embed.thumbnail.url is None
+
+
+from utils.ui import COLOR_SUCCESS, build_added_to_queue_embed
+
+
+def test_build_added_to_queue_embed_shows_position():
+    embed = build_added_to_queue_embed({"title": "Limit Break x Survivor"}, position=3)
+
+    assert embed.title == "✅ Añadido a la cola"
+    assert embed.description == "Limit Break x Survivor"
+    assert embed.colour.value == COLOR_SUCCESS
+    assert len(embed.fields) == 1
+    assert embed.fields[0].name == "Posición en cola"
+    assert embed.fields[0].value == "3"
