@@ -31,7 +31,7 @@ FFMPEG_BEFORE_OPTIONS = (
 )
 FFMPEG_OPTIONS = {
     "before_options": FFMPEG_BEFORE_OPTIONS,
-    "options": "-vn -b:a 192k -ac 2 -ar 48000",
+    "options": "-vn -b:a 192k",
 }
 YTDL_OPTIONS = {
     "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best",
@@ -202,7 +202,12 @@ class Music(commands.Cog):
             s._skip_republish = False
             return
         if s.current_song:
-            await self._publish_now_playing(ctx, s.current_song)
+            try:
+                await self._publish_now_playing(ctx, s.current_song)
+            except discord.errors.DiscordServerError as e:
+                logger.warning(
+                    f"Discord API error al enviar embed de Now Playing: {type(e).__name__}: {e}"
+                )
 
     def update_activity(self, ctx_or_guild) -> None:
         """Refresh the activity timestamp for the guild from `ctx_or_guild`."""
@@ -352,9 +357,6 @@ class Music(commands.Cog):
                 ),
             )
             logger.debug("Reproducción iniciada")
-            s._skip_republish = True
-            await self._publish_now_playing(ctx, song)
-            s._skip_republish = False
             self.update_activity(ctx)  # Update activity when playing
         except Exception as e:
             logger.error(
@@ -369,6 +371,17 @@ class Music(commands.Cog):
             )
             # Try to play the next song
             await self.play_next_in_queue(ctx)
+            return
+
+        s._skip_republish = True
+        try:
+            await self._publish_now_playing(ctx, song)
+        except discord.errors.DiscordServerError as e:
+            logger.warning(
+                f"Discord API error al enviar embed de Now Playing: {type(e).__name__}: {e}"
+            )
+        finally:
+            s._skip_republish = False
 
     async def _after_play(self, ctx, error, song_title):
         """Callback que se ejecuta después de que termina una canción"""
