@@ -7,6 +7,8 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from utils.ui import build_error_embed, MusicControlView
+
 # Load environment variables from the .env file
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -43,8 +45,13 @@ logger = logging.getLogger("ssj-bot")
 # Set intents to receive message content and member events
 intents = discord.Intents.all()
 
+class SSJBot(commands.Bot):
+    async def setup_hook(self):
+        self.add_view(MusicControlView(bot=self))
+
+
 # Initialize the bot with a command prefix and intents
-bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
+bot = SSJBot(command_prefix=commands.when_mentioned, intents=intents)
 
 
 @bot.event
@@ -102,12 +109,12 @@ async def on_app_command_error(
         error,
         exc_info=True,
     )
-    msg = "Ocurrió un error inesperado."
+    embed = build_error_embed("Ocurrió un error inesperado.")
     try:
         if interaction.response.is_done():
-            await interaction.followup.send(msg, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         else:
-            await interaction.response.send_message(msg, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
     except Exception as e:
         logger.error("No pude enviar mensaje de error al usuario: %s", e)
 
@@ -116,12 +123,29 @@ async def handle_command_error(ctx, error):
     """Global handler for prefix/mention command errors.
 
     Silences CommandNotFound (typos like !d, !aaa) to avoid log spam now
-    that the prefix is disabled. Re-raises everything else so real bugs
-    still get logged by discord.py's default behavior.
+    that the prefix is disabled. Sends user-friendly embeds for known
+    errors and a generic message for unexpected ones.
     """
     if isinstance(error, commands.CommandNotFound):
         return
-    raise error
+
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(embed=build_error_embed(f"Falta el argumento: `{error.param.name}`"))
+        return
+
+    if isinstance(error, commands.BadArgument):
+        await ctx.send(embed=build_error_embed("Argumento inválido."))
+        return
+
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(embed=build_error_embed(f"Comando en cooldown. Intenta en {error.retry_after:.1f}s"))
+        return
+
+    if isinstance(error, commands.CommandInvokeError):
+        await ctx.send(embed=build_error_embed("Ha ocurrido un error inesperado."))
+        return
+
+    await ctx.send(embed=build_error_embed("Ha ocurrido un error inesperado."))
 
 
 bot.add_listener(handle_command_error, "on_command_error")

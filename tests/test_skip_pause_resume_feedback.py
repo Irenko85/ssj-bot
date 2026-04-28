@@ -17,7 +17,8 @@ async def test_skip_sends_feedback_when_no_voice_client():
 
     await cog.skip.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada que skipear.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -32,7 +33,8 @@ async def test_skip_sends_feedback_when_not_playing():
 
     await cog.skip.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada que skipear.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -46,7 +48,8 @@ async def test_pause_sends_feedback_when_no_voice_client():
 
     await cog.pause.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada reproduciéndose para pausar.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -61,7 +64,8 @@ async def test_pause_sends_feedback_when_not_playing():
 
     await cog.pause.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada reproduciéndose para pausar.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -75,7 +79,8 @@ async def test_resume_sends_feedback_when_no_voice_client():
 
     await cog.resume.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada pausado para reanudar.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -90,16 +95,19 @@ async def test_resume_sends_feedback_when_not_paused():
 
     await cog.resume.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada pausado para reanudar.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
 async def test_skip_still_works_when_playing():
     """Regression: ensure happy path is preserved."""
     cog = Music.__new__(Music)
+    cog.states = {}
     cog.update_activity = MagicMock()
 
     ctx = MagicMock()
+    ctx.guild = MagicMock(id=1)
     ctx.voice_client = MagicMock()
     ctx.voice_client.is_playing = MagicMock(return_value=True)
     ctx.send = AsyncMock()
@@ -107,4 +115,5 @@ async def test_skip_still_works_when_playing():
     await cog.skip.callback(cog, ctx)
 
     ctx.voice_client.stop.assert_called_once()
-    ctx.send.assert_awaited_once_with("Se skipeó la canción actual.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
