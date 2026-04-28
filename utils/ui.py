@@ -116,3 +116,20 @@ def build_queue_embed(
     )
     embed.set_footer(text=f"Página {page}/{total_pages} · {total} canciones en cola")
     return embed
+
+
+def build_search_results_embed(results: list) -> discord.Embed:
+    if results:
+        lines = [
+            f"{index + 1}. {result['title']}"
+            for index, result in enumerate(results)
+        ]
+        description = "\n".join(lines)
+    else:
+        description = "No se encontraron resultados."
+
+    return discord.Embed(
+        title="🔍 Resultados de búsqueda",
+        description=description,
+        colour=COLOR_PRIMARY,
+    )

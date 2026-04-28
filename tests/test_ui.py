@@ -123,3 +123,28 @@ def test_build_queue_embed_paginates_results():
     assert "15. Song 15" in embed.description
     assert "10. Song 10" not in embed.description
     assert embed.footer.text == "Página 2/2 · 15 canciones en cola"
+
+
+from utils.ui import build_search_results_embed
+
+
+def test_build_search_results_embed_lists_titles():
+    embed = build_search_results_embed(
+        [
+            {"title": "Blue Bird"},
+            {"title": "Silhouette"},
+            {"title": "Haruka Kanata"},
+        ]
+    )
+
+    assert embed.title == "🔍 Resultados de búsqueda"
+    assert "1. Blue Bird" in embed.description
+    assert "2. Silhouette" in embed.description
+    assert "3. Haruka Kanata" in embed.description
+
+
+def test_build_search_results_embed_handles_empty_list():
+    embed = build_search_results_embed([])
+
+    assert embed.title == "🔍 Resultados de búsqueda"
+    assert embed.description == "No se encontraron resultados."
