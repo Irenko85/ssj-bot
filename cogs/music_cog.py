@@ -11,6 +11,12 @@ import shutil
 from time import time
 from utils import utils
 from discord.ext import commands, tasks
+from utils.ui import (
+    MusicControlView,
+    build_error_embed,
+    build_info_embed,
+    build_now_playing_embed,
+)
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -241,61 +247,109 @@ class Music(commands.Cog):
         # Return the first non-null header
         return next((h for h in sources if h), None)
 
+    async def _send_embed(self, ctx, embed, *, ephemeral: bool = False):
+        """Helper para enviar embeds respetando el modo ephemeral."""
+        if ephemeral and ctx.interaction is not None:
+            return await ctx.send(embed=embed, ephemeral=True)
+        return await ctx.send(embed=embed)
+
+    async def _publish_now_playing(self, ctx, song: dict):
+        """Envía o edita el mensaje de Now Playing con embed + botones."""
+        s = self._state(ctx)
+        embed = build_now_playing_embed(song)
+        view = MusicControlView(self, ctx)
+
+        if s.now_playing_message is not None:
+            try:
+                await s.now_playing_message.edit(embed=embed, view=view)
+                return s.now_playing_message
+            except Exception:
+                s.now_playing_message = None
+
+        s.now_playing_message = await ctx.send(embed=embed, view=view)
+        return s.now_playing_message
+
+    async def _finalize_now_playing(self, ctx, message: str):
+        """Deshabilita los botones del mensaje Now Playing cuando termina la reproducción."""
+        s = self._state(ctx)
+        s.actual_song = None
+
+        if s.now_playing_message is None:
+            return
+
+        view = MusicControlView(self, ctx)
+        for child in view.children:
+            child.disabled = True
+
+        try:
+            await s.now_playing_message.edit(
+                embed=build_info_embed("⏹ Reproducción finalizada", message),
+                view=view,
+            )
+        except Exception:
+            pass
+
     async def play_next_in_queue(self, ctx):
         s = self._state(ctx)
         logger.debug(
             f"play_next_in_queue llamado en guild={ctx.guild.id}, canciones en cola: {len(s.queue)}"
         )
 
-        if len(s.queue) > 0:
-            # Verify that voice_client is available and connected
-            if not ctx.voice_client or not ctx.voice_client.is_connected():
-                logger.error("voice_client no está conectado en play_next_in_queue")
-                await ctx.send("Error: El bot no está conectado a un canal de voz.")
-                return
+        if len(s.queue) == 0:
+            await self._finalize_now_playing(ctx, "La cola terminó.")
+            return
 
-            s.actual_song = s.queue[0]["title"]
-            song = s.queue.pop(0)
-            logger.info(
-                "starting playback in guild %s: %r",
-                ctx.guild.id if ctx.guild else None, s.actual_song,
+        # Verify that voice_client is available and connected
+        if not ctx.voice_client or not ctx.voice_client.is_connected():
+            logger.error("voice_client no está conectado en play_next_in_queue")
+            await ctx.send("Error: El bot no está conectado a un canal de voz.")
+            return
+
+        s.actual_song = s.queue[0]["title"]
+        song = s.queue.pop(0)
+        logger.info(
+            "starting playback in guild %s: %r",
+            ctx.guild.id if ctx.guild else None, s.actual_song,
+        )
+        url = song["url"]
+        logger.debug(f"Preparando reproducción: {song['title']}")
+        logger.debug(
+            f"URL de audio: {url[:100]}..."
+        )  # Show only the first 100 characters
+
+        try:
+            logger.debug("Creando FFmpegOpusAudio source...")
+            before_options = self._build_before_options(song.get("headers"))
+            source = discord.FFmpegOpusAudio(
+                url,
+                before_options=before_options,
+                options=FFMPEG_OPTIONS["options"],
             )
-            url = song["url"]
-            logger.debug(f"Preparando reproducción: {song['title']}")
-            logger.debug(
-                f"URL de audio: {url[:100]}..."
-            )  # Show only the first 100 characters
+            logger.debug("Source creado exitosamente")
 
-            try:
-                logger.debug("Creando FFmpegOpusAudio source...")
-                before_options = self._build_before_options(song.get("headers"))
-                source = discord.FFmpegOpusAudio(
-                    url,
-                    before_options=before_options,
-                    options=FFMPEG_OPTIONS["options"],
-                )
-                logger.debug("Source creado exitosamente")
-
-                logger.debug("Iniciando reproducción...")
-                ctx.voice_client.play(
-                    source,
-                    after=lambda e: self.bot.loop.create_task(
-                        self._after_play(ctx, e, song["title"])
-                    ),
-                )
-                logger.debug("Reproducción iniciada")
-                await ctx.send(f"Reproduciendo: **{song['title']}**")
-                self.update_activity(ctx)  # Update activity when playing
-            except Exception as e:
-                logger.error(
-                    f"Exception en play_next_in_queue: {type(e).__name__}: {e}"
-                )
-                logger.error(traceback.format_exc())
-                await ctx.send(
+            logger.debug("Iniciando reproducción...")
+            ctx.voice_client.play(
+                source,
+                after=lambda e: self.bot.loop.create_task(
+                    self._after_play(ctx, e, song["title"])
+                ),
+            )
+            logger.debug("Reproducción iniciada")
+            await self._publish_now_playing(ctx, song)
+            self.update_activity(ctx)  # Update activity when playing
+        except Exception as e:
+            logger.error(
+                f"Exception en play_next_in_queue: {type(e).__name__}: {e}"
+            )
+            logger.error(traceback.format_exc())
+            await self._send_embed(
+                ctx,
+                build_error_embed(
                     f"Error al reproducir **{song['title']}**. Intentando con la siguiente canción..."
-                )
-                # Try to play the next song
-                await self.play_next_in_queue(ctx)
+                ),
+            )
+            # Try to play the next song
+            await self.play_next_in_queue(ctx)
 
     async def _after_play(self, ctx, error, song_title):
         """Callback que se ejecuta después de que termina una canción"""
