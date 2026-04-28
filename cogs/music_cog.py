@@ -570,7 +570,7 @@ class Music(commands.Cog):
                             search_opts.pop("playlist_items", None)
                             with SafeYoutubeDL(search_opts) as ydl_search:
                                 search_info = await self._extract_info(
-                                    ydl_search, f"https://music.youtube.com/search?q={search}", download=False
+                                    ydl_search, f"https://music.youtube.com/search?q={search}#songs", download=False
                                 )
                             entries = list(search_info.get("entries") or [])[:5]
                             if not entries:
