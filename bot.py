@@ -7,6 +7,8 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from utils.ui import build_error_embed
+
 # Load environment variables from the .env file
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -116,12 +118,29 @@ async def handle_command_error(ctx, error):
     """Global handler for prefix/mention command errors.
 
     Silences CommandNotFound (typos like !d, !aaa) to avoid log spam now
-    that the prefix is disabled. Re-raises everything else so real bugs
-    still get logged by discord.py's default behavior.
+    that the prefix is disabled. Sends user-friendly embeds for known
+    errors and a generic message for unexpected ones.
     """
     if isinstance(error, commands.CommandNotFound):
         return
-    raise error
+
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(embed=build_error_embed(f"Falta el argumento: `{error.param.name}`"))
+        return
+
+    if isinstance(error, commands.BadArgument):
+        await ctx.send(embed=build_error_embed("Argumento inválido."))
+        return
+
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(embed=build_error_embed(f"Comando en cooldown. Intenta en {error.retry_after:.1f}s"))
+        return
+
+    if isinstance(error, commands.CommandInvokeError):
+        await ctx.send(embed=build_error_embed("Ha ocurrido un error inesperado."))
+        return
+
+    await ctx.send(embed=build_error_embed("Ha ocurrido un error inesperado."))
 
 
 bot.add_listener(handle_command_error, "on_command_error")
