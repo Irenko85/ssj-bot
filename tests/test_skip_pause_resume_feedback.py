@@ -103,9 +103,11 @@ async def test_resume_sends_feedback_when_not_paused():
 async def test_skip_still_works_when_playing():
     """Regression: ensure happy path is preserved."""
     cog = Music.__new__(Music)
+    cog.states = {}
     cog.update_activity = MagicMock()
 
     ctx = MagicMock()
+    ctx.guild = MagicMock(id=1)
     ctx.voice_client = MagicMock()
     ctx.voice_client.is_playing = MagicMock(return_value=True)
     ctx.send = AsyncMock()

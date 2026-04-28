@@ -24,6 +24,7 @@ async def test_queue_repubishes_now_playing_when_song_is_playing():
     state.current_song = {"title": "Current Song"}
 
     await cog.queue.callback(cog, ctx)
+    await cog.cog_after_invoke(ctx)
 
     cog._publish_now_playing.assert_awaited_once_with(ctx, state.current_song)
 
@@ -45,6 +46,7 @@ async def test_queue_does_not_repubish_when_no_song_is_playing():
     state.current_song = None
 
     await cog.queue.callback(cog, ctx)
+    await cog.cog_after_invoke(ctx)
 
     cog._publish_now_playing.assert_not_awaited()
 
@@ -66,6 +68,7 @@ async def test_remove_from_queue_repubishes_now_playing_when_song_is_playing():
     state.current_song = {"title": "Current Song"}
 
     await cog.remove_from_queue.callback(cog, ctx, position=1)
+    await cog.cog_after_invoke(ctx)
 
     cog._publish_now_playing.assert_awaited_once_with(ctx, state.current_song)
 
@@ -86,6 +89,7 @@ async def test_remove_from_queue_does_not_repubish_when_no_song_is_playing():
     state.current_song = None
 
     await cog.remove_from_queue.callback(cog, ctx, position=1)
+    await cog.cog_after_invoke(ctx)
 
     cog._publish_now_playing.assert_not_awaited()
 
@@ -109,6 +113,7 @@ async def test_clear_repubishes_now_playing_when_voice_client_is_playing():
     state.current_song = {"title": "Current Song"}
 
     await cog.clear.callback(cog, ctx)
+    await cog.cog_after_invoke(ctx)
 
     cog._publish_now_playing.assert_awaited_once_with(ctx, state.current_song)
 
@@ -128,9 +133,10 @@ async def test_clear_does_not_repubish_when_voice_client_is_not_playing():
 
     state = cog._state(ctx)
     state.queue = [{"title": "Song 1"}]
-    state.current_song = {"title": "Current Song"}
+    state.current_song = None
 
     await cog.clear.callback(cog, ctx)
+    await cog.cog_after_invoke(ctx)
 
     cog._publish_now_playing.assert_not_awaited()
 
@@ -149,9 +155,10 @@ async def test_clear_does_not_repubish_when_no_voice_client():
 
     state = cog._state(ctx)
     state.queue = [{"title": "Song 1"}]
-    state.current_song = {"title": "Current Song"}
+    state.current_song = None
 
     await cog.clear.callback(cog, ctx)
+    await cog.cog_after_invoke(ctx)
 
     cog._publish_now_playing.assert_not_awaited()
 
@@ -176,6 +183,7 @@ async def test_shuffle_repubishes_now_playing_when_song_is_playing():
     state.current_song = {"title": "Current Song"}
 
     await cog.shuffle.callback(cog, ctx)
+    await cog.cog_after_invoke(ctx)
 
     cog._publish_now_playing.assert_awaited_once_with(ctx, state.current_song)
 
@@ -199,5 +207,43 @@ async def test_shuffle_does_not_repubish_when_no_song_is_playing():
     state.current_song = None
 
     await cog.shuffle.callback(cog, ctx)
+    await cog.cog_after_invoke(ctx)
+
+    cog._publish_now_playing.assert_not_awaited()
+
+
+# ------------------------------------------------------------- cog_after_invoke --
+@pytest.mark.asyncio
+async def test_cog_after_invoke_skips_republish_when_flag_is_set():
+    cog = Music.__new__(Music)
+    cog.states = {}
+    cog._publish_now_playing = AsyncMock()
+
+    ctx = MagicMock()
+    ctx.guild = MagicMock(id=1)
+
+    state = cog._state(ctx)
+    state.current_song = {"title": "Current Song"}
+    state._skip_republish = True
+
+    await cog.cog_after_invoke(ctx)
+
+    cog._publish_now_playing.assert_not_awaited()
+    assert state._skip_republish is False
+
+
+@pytest.mark.asyncio
+async def test_cog_after_invoke_does_not_republish_when_current_song_is_none():
+    cog = Music.__new__(Music)
+    cog.states = {}
+    cog._publish_now_playing = AsyncMock()
+
+    ctx = MagicMock()
+    ctx.guild = MagicMock(id=1)
+
+    state = cog._state(ctx)
+    state.current_song = None
+
+    await cog.cog_after_invoke(ctx)
 
     cog._publish_now_playing.assert_not_awaited()

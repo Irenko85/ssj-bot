@@ -120,6 +120,7 @@ class GuildState:
         "inactivity_warned",
         "inactivity_channel",
         "now_playing_message",
+        "_skip_republish",
     )
 
     def __init__(self) -> None:
@@ -130,6 +131,7 @@ class GuildState:
         self.inactivity_warned: bool = False
         self.inactivity_channel: discord.TextChannel | None = None
         self.now_playing_message: discord.Message | None = None
+        self._skip_republish: bool = False
 
 
 class Music(commands.Cog):
@@ -192,6 +194,15 @@ class Music(commands.Cog):
             await ctx.send(embed=build_error_embed("Los comandos de música solo funcionan en servidores."))
             return False
         return True
+
+    async def cog_after_invoke(self, ctx):
+        """Re-publish the Now Playing embed at the bottom of the chat after any command."""
+        s = self._state(ctx)
+        if s._skip_republish:
+            s._skip_republish = False
+            return
+        if s.current_song:
+            await self._publish_now_playing(ctx, s.current_song)
 
     def update_activity(self, ctx_or_guild) -> None:
         """Refresh the activity timestamp for the guild from `ctx_or_guild`."""
@@ -341,7 +352,9 @@ class Music(commands.Cog):
                 ),
             )
             logger.debug("Reproducción iniciada")
+            s._skip_republish = True
             await self._publish_now_playing(ctx, song)
+            s._skip_republish = False
             self.update_activity(ctx)  # Update activity when playing
         except Exception as e:
             logger.error(
@@ -642,9 +655,6 @@ class Music(commands.Cog):
                 await self.play_next_in_queue(ctx)
             else:
                 logger.debug("Ya hay una canción reproduciéndose")
-                s = self._state(ctx)
-                if s.current_song:
-                    await self._publish_now_playing(ctx, s.current_song)
         else:
             logger.error("voice_client no está conectado después de join_voice_channel")
             await ctx.send(embed=build_error_embed("No se pudo establecer conexión con el canal de voz."))
@@ -665,6 +675,8 @@ class Music(commands.Cog):
     async def skip(self, ctx: commands.Context):
         logger.info("skip invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         if ctx.voice_client and ctx.voice_client.is_playing():
+            s = self._state(ctx)
+            s.current_song = None
             ctx.voice_client.stop()
             await ctx.send(embed=build_info_embed("⏭ Skipeado", "Se skipeó la canción actual."))
             self.update_activity(ctx)  # Update activity when skipping
@@ -699,8 +711,6 @@ class Music(commands.Cog):
         else:
             await ctx.send(embed=build_info_embed("📋 Cola de reproducción", "La cola está vacía."))
         self.update_activity(ctx)  # Update activity when viewing queue
-        if s.current_song:
-            await self._publish_now_playing(ctx, s.current_song)
 
     @commands.hybrid_command(
         name="rq", description="Removes a song from the queue by its position in the list."
@@ -719,18 +729,12 @@ class Music(commands.Cog):
             await ctx.send(
                 embed=build_warning_embed("Posición inválida. Asegúrate de que el número esté dentro del rango de la cola.")
             )
-        if s.current_song:
-            await self._publish_now_playing(ctx, s.current_song)
 
     @commands.hybrid_command(name="clear", description="Clears the song queue.")
     async def clear(self, ctx: commands.Context):
         self._state(ctx).queue.clear()
         await ctx.send(embed=build_info_embed("🧹 Cola vaciada", "La cola se vació."))
         self.update_activity(ctx)  # Update activity when clearing queue
-        if ctx.voice_client and ctx.voice_client.is_playing():
-            s = self._state(ctx)
-            if s.current_song:
-                await self._publish_now_playing(ctx, s.current_song)
 
     @commands.hybrid_command(name="shuffle", description="Shuffles the song queue.")
     async def shuffle(self, ctx: commands.Context):
@@ -741,8 +745,6 @@ class Music(commands.Cog):
             self.update_activity(ctx)  # Update activity when shuffling
         else:
             await ctx.send(embed=build_warning_embed("La cola está vacía."))
-        if s.current_song:
-            await self._publish_now_playing(ctx, s.current_song)
 
     @commands.hybrid_command(name="coin", description="Flips a coin.")
     async def coin(self, ctx: commands.Context):

@@ -111,3 +111,58 @@ async def test_publish_now_playing_deletes_previous_message_and_sends_new_one():
     ctx.send.assert_awaited_once()
     assert state.now_playing_message is second_message
     assert result is second_message
+
+
+@pytest.mark.asyncio
+async def test_play_next_in_queue_sets_skip_republish_flag():
+    cog = Music.__new__(Music)
+    cog.bot = MagicMock()
+    cog.bot.loop = MagicMock()
+    cog.states = {}
+    cog.update_activity = MagicMock()
+
+    ctx = MagicMock()
+    ctx.guild = MagicMock(id=1)
+    ctx.voice_client = MagicMock()
+    ctx.voice_client.is_connected.return_value = True
+    ctx.voice_client.play = MagicMock()
+    ctx.send = AsyncMock(return_value=MagicMock())
+
+    state = cog._state(ctx)
+    state.queue = [
+        {
+            "title": "Cha-La Head-Cha-La",
+            "url": "https://stream.example/audio",
+            "source_url": "https://www.youtube.com/watch?v=YnL70cee6qo",
+            "headers": {},
+        }
+    ]
+
+    with patch("cogs.music_cog.discord.FFmpegOpusAudio", return_value=MagicMock()):
+        await cog.play_next_in_queue(ctx)
+
+    assert state._skip_republish is False
+
+
+@pytest.mark.asyncio
+async def test_skip_does_not_double_publish():
+    cog = Music.__new__(Music)
+    cog.states = {}
+    cog.update_activity = MagicMock()
+    cog._publish_now_playing = AsyncMock()
+    cog.play_next_in_queue = AsyncMock()
+
+    ctx = MagicMock()
+    ctx.guild = MagicMock(id=1)
+    ctx.voice_client = MagicMock()
+    ctx.voice_client.is_playing.return_value = True
+    ctx.send = AsyncMock()
+
+    state = cog._state(ctx)
+    state.current_song = {"title": "Current Song"}
+    state.queue = [{"title": "Next Song"}]
+
+    await cog.skip.callback(cog, ctx)
+    await cog.cog_after_invoke(ctx)
+
+    cog._publish_now_playing.assert_not_awaited()
