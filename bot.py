@@ -45,15 +45,19 @@ logger = logging.getLogger("ssj-bot")
 # Set intents to receive message content and member events
 intents = discord.Intents.all()
 
+class SSJBot(commands.Bot):
+    async def setup_hook(self):
+        self.add_view(MusicControlView(bot=self))
+
+
 # Initialize the bot with a command prefix and intents
-bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
+bot = SSJBot(command_prefix=commands.when_mentioned, intents=intents)
 
 
 @bot.event
 async def on_ready():
     """Event triggered when the bot has connected to Discord."""
     logger.info(f"{bot.user.name} conectado en {len(bot.guilds)} servidor(es).")
-    bot.add_view(MusicControlView(bot=bot))
     await _sync_app_commands()
 
 

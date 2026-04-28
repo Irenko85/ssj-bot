@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from bot import on_ready, bot
-from utils.ui import MusicControlView
+from bot import bot
+from utils.ui import MusicControlView, make_music_control_view
 
 
 def make_interaction():
@@ -45,8 +45,30 @@ def test_music_control_view_has_expected_buttons():
     assert custom_ids == ["pause_resume", "skip", "stop", "view_queue"]
 
 
+def test_factory_returns_fresh_instance():
+    bot_mock = make_bot()
+    v1 = make_music_control_view(bot_mock)
+    v2 = make_music_control_view(bot_mock)
+    assert v1 is not v2
+    assert isinstance(v1, MusicControlView)
+    assert isinstance(v2, MusicControlView)
+
+
+def test_factory_sets_paused_state():
+    bot_mock = make_bot()
+    view = make_music_control_view(bot_mock, paused=True)
+    pause_button = next(child for child in view.children if child.custom_id == "pause_resume")
+    assert str(pause_button.emoji) == "▶️"
+
+
+def test_factory_sets_disabled_state():
+    bot_mock = make_bot()
+    view = make_music_control_view(bot_mock, disabled=True)
+    assert all(child.disabled for child in view.children)
+
+
 @pytest.mark.asyncio
-async def test_pause_resume_button_pauses_and_flips_emoji():
+async def test_pause_resume_button_pauses_and_edits_message_with_fresh_view():
     bot_mock = make_bot()
     view = MusicControlView(bot=bot_mock)
     interaction = make_interaction()
@@ -57,9 +79,19 @@ async def test_pause_resume_button_pauses_and_flips_emoji():
     await button.callback(interaction)
 
     interaction.guild.voice_client.pause.assert_called_once()
-    assert str(button.emoji) == "▶️"
+    # Singleton must NOT be mutated
+    assert str(button.emoji) == "⏸"
+    interaction.message.edit.assert_awaited_once()
     interaction.response.send_message.assert_awaited_once()
     bot_mock.get_cog.return_value.update_activity.assert_called_once_with(interaction.guild)
+
+    # The fresh view passed to edit must have the paused emoji
+    _, kwargs = interaction.message.edit.call_args
+    fresh_view = kwargs["view"]
+    pause_button = next(
+        child for child in fresh_view.children if child.custom_id == "pause_resume"
+    )
+    assert str(pause_button.emoji) == "▶️"
 
 
 @pytest.mark.asyncio
@@ -88,10 +120,16 @@ async def test_stop_button_disables_all_buttons_and_edits_message():
     button = next(child for child in view.children if child.custom_id == "stop")
     await button.callback(interaction)
 
-    assert all(child.disabled for child in view.children)
+    # Singleton must NOT be mutated
+    assert not any(child.disabled for child in view.children)
     interaction.message.edit.assert_awaited_once()
     interaction.guild.voice_client.disconnect.assert_awaited_once()
     bot_mock.get_cog.return_value._cleanup_state.assert_called_once_with(interaction.guild.id)
+
+    # The fresh view passed to edit must have all buttons disabled
+    _, kwargs = interaction.message.edit.call_args
+    fresh_view = kwargs["view"]
+    assert all(child.disabled for child in fresh_view.children)
 
 
 @pytest.mark.asyncio
@@ -112,7 +150,6 @@ async def test_view_queue_button_sends_ephemeral_embed():
 async def test_button_callbacks_work_without_ctx():
     bot_mock = make_bot()
     view = MusicControlView(bot=bot_mock)
-    assert view.ctx is None
 
     interaction = make_interaction()
     interaction.guild.voice_client.is_paused.return_value = False
@@ -126,21 +163,11 @@ async def test_button_callbacks_work_without_ctx():
 
 
 @pytest.mark.asyncio
-async def test_bot_add_view_called_during_startup():
-    original_user = bot._connection.user
-    original_guilds = bot._connection._guilds
-    bot._connection.user = MagicMock(name="TestBot")
-    bot._connection._guilds = {}
-    try:
-        with patch.object(bot, "add_view") as mock_add_view, \
-             patch("bot._sync_app_commands", new_callable=AsyncMock), \
-             patch.object(bot, "get_cog", return_value=make_music_cog()):
-            await on_ready()
+async def test_bot_add_view_called_during_setup_hook():
+    with patch.object(bot, "add_view") as mock_add_view, \
+         patch.object(bot, "get_cog", return_value=make_music_cog()):
+        await bot.setup_hook()
 
-        mock_add_view.assert_called_once()
-        view = mock_add_view.call_args[0][0]
-        assert isinstance(view, MusicControlView)
-        assert view.ctx is None
-    finally:
-        bot._connection.user = original_user
-        bot._connection._guilds = original_guilds
+    mock_add_view.assert_called_once()
+    view = mock_add_view.call_args[0][0]
+    assert isinstance(view, MusicControlView)

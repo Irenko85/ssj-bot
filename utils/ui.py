@@ -138,11 +138,10 @@ def build_search_results_embed(results: list) -> discord.Embed:
 
 
 class MusicControlView(discord.ui.View):
-    def __init__(self, bot, music_cog=None, ctx=None):
+    def __init__(self, bot, music_cog=None):
         super().__init__(timeout=None)
         self.bot = bot
         self.music_cog = music_cog or bot.get_cog("Music")
-        self.ctx = ctx
 
     @discord.ui.button(
         emoji="⏸",
@@ -164,11 +163,11 @@ class MusicControlView(discord.ui.View):
 
         if voice_client.is_paused():
             voice_client.resume()
-            button.emoji = "⏸"
+            paused = False
             message = "Se reanudó la reproducción."
         elif voice_client.is_playing():
             voice_client.pause()
-            button.emoji = "▶️"
+            paused = True
             message = "Se pausó la reproducción."
         else:
             await interaction.response.send_message(
@@ -178,7 +177,8 @@ class MusicControlView(discord.ui.View):
             return
 
         self.music_cog.update_activity(interaction.guild)
-        await interaction.message.edit(view=self)
+        fresh_view = make_music_control_view(self.bot, music_cog=self.music_cog, paused=paused)
+        await interaction.message.edit(view=fresh_view)
         await interaction.response.send_message(
             embed=build_info_embed("Control de reproducción", message),
             ephemeral=True,
@@ -239,12 +239,10 @@ class MusicControlView(discord.ui.View):
             if inspect.isawaitable(result):
                 await result
 
-        for child in self.children:
-            child.disabled = True
-
+        fresh_view = make_music_control_view(self.bot, music_cog=self.music_cog, disabled=True)
         await interaction.message.edit(
             embed=build_info_embed("⏹ Reproducción finalizada", "La reproducción se detuvo."),
-            view=self,
+            view=fresh_view,
         )
         await interaction.response.send_message(
             embed=build_info_embed("Control de reproducción", "Se detuvo la reproducción."),
@@ -278,3 +276,18 @@ class MusicControlView(discord.ui.View):
             )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# Stateless singleton registered with bot.add_view().  Callbacks must NOT
+# mutate this instance; instead they create fresh views via the factory.
+def make_music_control_view(bot, music_cog=None, *, paused=False, disabled=False):
+    """Return a fresh MusicControlView with the desired visual state."""
+    view = MusicControlView(bot, music_cog=music_cog)
+    if paused:
+        for child in view.children:
+            if child.custom_id == "pause_resume":
+                child.emoji = "▶️"
+    if disabled:
+        for child in view.children:
+            child.disabled = True
+    return view

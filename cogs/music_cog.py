@@ -20,6 +20,7 @@ from utils.ui import (
     build_queue_embed,
     build_search_results_embed,
     build_warning_embed,
+    make_music_control_view,
 )
 
 # Configure logger
@@ -261,7 +262,7 @@ class Music(commands.Cog):
         """Envía o edita el mensaje de Now Playing con embed + botones."""
         s = self._state(ctx)
         embed = build_now_playing_embed(song)
-        view = MusicControlView(self.bot, music_cog=self)
+        view = make_music_control_view(self.bot, music_cog=self)
 
         if s.now_playing_message is not None:
             try:
@@ -281,9 +282,7 @@ class Music(commands.Cog):
         if s.now_playing_message is None:
             return
 
-        view = MusicControlView(self.bot, music_cog=self)
-        for child in view.children:
-            child.disabled = True
+        view = make_music_control_view(self.bot, music_cog=self, disabled=True)
 
         try:
             await s.now_playing_message.edit(
