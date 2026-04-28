@@ -569,7 +569,7 @@ class Music(commands.Cog):
                             search_opts.pop("playlist_items", None)
                             with SafeYoutubeDL(search_opts) as ydl_search:
                                 search_info = await self._extract_info(
-                                    ydl_search, f"ytmsearch5:{search}", download=False
+                                    ydl_search, f"ytsearch5:{search}", download=False
                                 )
                             entries = search_info.get("entries") or []
                             if not entries:
