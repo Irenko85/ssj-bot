@@ -838,8 +838,9 @@ class Music(commands.Cog):
                     info = await self._extract_info(ydl, f"ytsearch5:{query}", download=False)
                     entries = info.get("entries", [])
                 except Exception as e:
-                    await ctx.send("Ocurrió un error al buscar la canción.")
+                    await ctx.send(embed=build_error_embed("Ocurrió un error al buscar la canción."))
                     logger.error(f"Error en search: {e}")
+                    return
 
         if not entries:
             await ctx.send("No se encontraron resultados.")

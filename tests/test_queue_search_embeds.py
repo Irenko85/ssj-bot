@@ -142,6 +142,10 @@ async def test_search_command_handles_extract_info_exception():
 
         await cog.search.callback(cog, ctx, query="test")
 
-    calls = [call_args[0][0] for call_args in ctx.send.call_args_list]
-    assert "Ocurrió un error al buscar la canción." in calls
-    assert "No se encontraron resultados." in calls
+    assert ctx.send.call_count == 1, (
+        "Only one send call should happen when extract_info raises"
+    )
+    _, kwargs = ctx.send.call_args
+    assert "embed" in kwargs, (
+        "ctx.send should use embed=build_error_embed(...), not plain text"
+    )
