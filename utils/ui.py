@@ -138,9 +138,10 @@ def build_search_results_embed(results: list) -> discord.Embed:
 
 
 class MusicControlView(discord.ui.View):
-    def __init__(self, music_cog, ctx):
+    def __init__(self, bot, music_cog=None, ctx=None):
         super().__init__(timeout=None)
-        self.music_cog = music_cog
+        self.bot = bot
+        self.music_cog = music_cog or bot.get_cog("Music")
         self.ctx = ctx
 
     @discord.ui.button(
@@ -176,7 +177,7 @@ class MusicControlView(discord.ui.View):
             )
             return
 
-        self.music_cog.update_activity(self.ctx)
+        self.music_cog.update_activity(interaction.guild)
         await interaction.message.edit(view=self)
         await interaction.response.send_message(
             embed=build_info_embed("Control de reproducción", message),
@@ -202,7 +203,7 @@ class MusicControlView(discord.ui.View):
             return
 
         voice_client.stop()
-        self.music_cog.update_activity(self.ctx)
+        self.music_cog.update_activity(interaction.guild)
         await interaction.response.send_message(
             embed=build_info_embed("Control de reproducción", "Se skipeó la canción actual."),
             ephemeral=True,
@@ -226,7 +227,7 @@ class MusicControlView(discord.ui.View):
             )
             return
 
-        state = self.music_cog._state(self.ctx)
+        state = self.music_cog._state(interaction.guild)
         state.queue.clear()
 
         if voice_client.is_playing() or voice_client.is_paused():
@@ -263,7 +264,7 @@ class MusicControlView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        state = self.music_cog._state(self.ctx)
+        state = self.music_cog._state(interaction.guild)
 
         if state.queue:
             embed = build_queue_embed(

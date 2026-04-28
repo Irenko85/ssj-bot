@@ -191,9 +191,9 @@ class Music(commands.Cog):
             return False
         return True
 
-    def update_activity(self, ctx) -> None:
-        """Refresh the activity timestamp for the guild from `ctx`."""
-        s = self._state(ctx)
+    def update_activity(self, ctx_or_guild) -> None:
+        """Refresh the activity timestamp for the guild from `ctx_or_guild`."""
+        s = self._state(ctx_or_guild)
         s.last_activity = time()
         s.inactivity_warned = False
 
@@ -261,7 +261,7 @@ class Music(commands.Cog):
         """Envía o edita el mensaje de Now Playing con embed + botones."""
         s = self._state(ctx)
         embed = build_now_playing_embed(song)
-        view = MusicControlView(self, ctx)
+        view = MusicControlView(self.bot, music_cog=self)
 
         if s.now_playing_message is not None:
             try:
@@ -281,7 +281,7 @@ class Music(commands.Cog):
         if s.now_playing_message is None:
             return
 
-        view = MusicControlView(self, ctx)
+        view = MusicControlView(self.bot, music_cog=self)
         for child in view.children:
             child.disabled = True
 

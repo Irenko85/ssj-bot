@@ -7,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from utils.ui import build_error_embed
+from utils.ui import build_error_embed, MusicControlView
 
 # Load environment variables from the .env file
 load_dotenv()
@@ -53,6 +53,7 @@ bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents)
 async def on_ready():
     """Event triggered when the bot has connected to Discord."""
     logger.info(f"{bot.user.name} conectado en {len(bot.guilds)} servidor(es).")
+    bot.add_view(MusicControlView(bot=bot))
     await _sync_app_commands()
 
 
