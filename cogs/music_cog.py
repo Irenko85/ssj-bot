@@ -642,6 +642,7 @@ class Music(commands.Cog):
             s.queue.clear()
             ctx.voice_client.stop()
             await ctx.voice_client.disconnect()
+            await self._finalize_now_playing(ctx, "Reproducción detenida.")
             await ctx.send(embed=build_info_embed("⏹ Detenido", "Reproducción detenida."))
             self._cleanup_state(ctx.guild.id)
             # The check_inactivity loop stops itself once self.states is empty
@@ -777,6 +778,7 @@ class Music(commands.Cog):
                     ]
                     if not members_in_channel:
                         await voice_client.disconnect()
+                        await self._finalize_now_playing(guild, "No hay usuarios en el canal.")
                         if s.inactivity_channel:
                             await s.inactivity_channel.send(
                                 embed=build_info_embed("⏹ Desconectado", "No hay usuarios en el canal.")
@@ -804,6 +806,7 @@ class Music(commands.Cog):
                 # Disconnect for inactivity
                 if time_since_activity > INACTIVITY_TIMEOUT:
                     await voice_client.disconnect()
+                    await self._finalize_now_playing(guild, "Bot desconectado por inactividad.")
                     if s.inactivity_channel:
                         await s.inactivity_channel.send(
                             embed=build_info_embed("⏹ Desconectado", "Bot desconectado por inactividad.")
