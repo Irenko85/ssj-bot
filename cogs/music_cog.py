@@ -13,9 +13,12 @@ from utils import utils
 from discord.ext import commands, tasks
 from utils.ui import (
     MusicControlView,
+    build_added_to_queue_embed,
     build_error_embed,
     build_info_embed,
     build_now_playing_embed,
+    build_queue_embed,
+    build_search_results_embed,
 )
 
 # Configure logger
@@ -594,12 +597,13 @@ class Music(commands.Cog):
                             logger.debug(f"Video encontrado: {title}")
 
                         logger.debug(f"Agregando a la cola: {title}")
-                        self._state(ctx).queue.append(
-                            {"title": title, "url": url, "headers": headers}
-                        )
+                        song = {"title": title, "url": url, "headers": headers}
+                        self._state(ctx).queue.append(song)
                         if not silent:
                             logger.debug("Enviando mensaje de confirmación...")
-                            await ctx.send(f"Se agregó a la cola: **{title}**")
+                            await ctx.send(
+                                embed=build_added_to_queue_embed(song, len(self._state(ctx).queue))
+                            )
                             logger.debug("Mensaje enviado")
 
             except Exception as e:
@@ -677,12 +681,7 @@ class Music(commands.Cog):
     async def queue(self, ctx: commands.Context):
         s = self._state(ctx)
         if s.queue:
-            queue_list = "\n".join(
-                f"{i + 1}. {song['title']}" for i, song in enumerate(s.queue)
-            )
-            await ctx.send(
-                f"Reproduciendo: **{s.actual_song}**\nCanciones en cola ({len(s.queue)}):\n**{queue_list}**"
-            )
+            await ctx.send(embed=build_queue_embed(s.queue, s.actual_song))
         else:
             await ctx.send("La cola está vacía.")
         self.update_activity(ctx)  # Update activity when viewing queue
@@ -842,7 +841,11 @@ class Music(commands.Cog):
             return
 
         view = SearchView(entries, self, ctx)
-        await ctx.send(view=view, ephemeral=ctx.interaction is not None)
+        await ctx.send(
+            embed=build_search_results_embed(entries),
+            view=view,
+            ephemeral=ctx.interaction is not None,
+        )
         self.update_activity(ctx)  # Update activity when searching
 
 
