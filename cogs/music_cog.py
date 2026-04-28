@@ -910,6 +910,9 @@ class SearchSelect(discord.ui.Select):
             )
             return
 
+        if not await self.music_cog.join_voice_channel(self.ctx):
+            return
+
         song = {"title": title, "url": full_url, "headers": headers}
         self.music_cog._state(self.ctx).queue.append(song)
         await interaction.response.send_message(
@@ -918,16 +921,6 @@ class SearchSelect(discord.ui.Select):
 
         # Update activity when adding song
         self.music_cog.update_activity(self.ctx)
-
-        if not self.ctx.voice_client or not self.ctx.voice_client.is_connected():
-            if self.ctx.author.voice and self.ctx.author.voice.channel:
-                await self.music_cog.join_voice_channel(self.ctx)
-            else:
-                await interaction.followup.send(
-                    embed=build_error_embed("Debes estar en un canal de voz para reproducir la canción."),
-                    ephemeral=True,
-                )
-                return
 
         if not self.ctx.voice_client.is_playing():
             await self.music_cog.play_next_in_queue(self.ctx)
