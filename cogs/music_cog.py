@@ -108,6 +108,7 @@ class GuildState:
         "last_activity",
         "inactivity_warned",
         "inactivity_channel",
+        "now_playing_message",
     )
 
     def __init__(self) -> None:
@@ -116,6 +117,7 @@ class GuildState:
         self.last_activity: float = time()
         self.inactivity_warned: bool = False
         self.inactivity_channel: discord.TextChannel | None = None
+        self.now_playing_message: discord.Message | None = None
 
 
 class Music(commands.Cog):
