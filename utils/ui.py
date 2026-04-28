@@ -185,7 +185,7 @@ class MusicControlView(discord.ui.View):
 
     @discord.ui.button(
         emoji="⏭",
-        style=discord.ButtonStyle.primary,
+        style=discord.ButtonStyle.secondary,
         custom_id="skip",
     )
     async def skip(
@@ -210,7 +210,7 @@ class MusicControlView(discord.ui.View):
 
     @discord.ui.button(
         emoji="⏹",
-        style=discord.ButtonStyle.danger,
+        style=discord.ButtonStyle.secondary,
         custom_id="stop",
     )
     async def stop(
@@ -250,7 +250,7 @@ class MusicControlView(discord.ui.View):
             self.music_cog._cleanup_state(interaction.guild.id)
 
     @discord.ui.button(
-        emoji="📋",
+        emoji="🎶",
         style=discord.ButtonStyle.secondary,
         custom_id="view_queue",
     )
