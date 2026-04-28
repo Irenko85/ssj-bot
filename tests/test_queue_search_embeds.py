@@ -116,3 +116,32 @@ async def test_search_command_uses_build_search_results_embed():
     assert "embed" in kwargs, (
         "ctx.send should use embed=build_search_results_embed(...)"
     )
+
+
+# ------------------------------------------------------------------ Test D --
+@pytest.mark.asyncio
+async def test_search_command_handles_extract_info_exception():
+    """When _extract_info raises, ctx.send must be called with the error
+    message and no UnboundLocalError must occur."""
+    cog = Music.__new__(Music)
+    cog.update_activity = MagicMock()
+    cog._extract_info = AsyncMock(side_effect=Exception("yt-dlp error"))
+
+    ctx = MagicMock()
+    ctx.interaction = None
+    ctx.send = AsyncMock()
+    ctx.typing = MagicMock()
+    ctx.typing.return_value.__aenter__ = AsyncMock()
+    ctx.typing.return_value.__aexit__ = AsyncMock()
+    ctx.defer = AsyncMock()
+
+    with patch("cogs.music_cog.SafeYoutubeDL") as ydl_class:
+        ydl_instance = MagicMock()
+        ydl_class.return_value.__enter__ = MagicMock(return_value=ydl_instance)
+        ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        await cog.search.callback(cog, ctx, query="test")
+
+    calls = [call_args[0][0] for call_args in ctx.send.call_args_list]
+    assert "Ocurrió un error al buscar la canción." in calls
+    assert "No se encontraron resultados." in calls

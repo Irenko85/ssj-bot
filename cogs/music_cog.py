@@ -831,6 +831,7 @@ class Music(commands.Cog):
         search_options.pop("playlist_items", None)
         search_options["extract_flat"] = True
 
+        entries = []
         async with ctx.typing():
             with SafeYoutubeDL(search_options) as ydl:
                 try:

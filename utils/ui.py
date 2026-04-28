@@ -3,7 +3,6 @@ from __future__ import annotations
 import inspect
 import math
 import re
-from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
@@ -233,8 +232,6 @@ class MusicControlView(discord.ui.View):
         if voice_client.is_playing() or voice_client.is_paused():
             voice_client.stop()
         if voice_client.is_connected():
-            if isinstance(voice_client, MagicMock) and not isinstance(voice_client.disconnect, AsyncMock):
-                voice_client.disconnect = AsyncMock()
             result = voice_client.disconnect()
             if inspect.isawaitable(result):
                 await result

@@ -116,6 +116,7 @@ async def test_stop_button_disables_all_buttons_and_edits_message():
     interaction = make_interaction()
     interaction.guild.voice_client.is_connected.return_value = True
     interaction.guild.voice_client.is_playing.return_value = True
+    interaction.guild.voice_client.disconnect = AsyncMock()
 
     button = next(child for child in view.children if child.custom_id == "stop")
     await button.callback(interaction)
