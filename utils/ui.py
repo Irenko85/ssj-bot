@@ -15,3 +15,19 @@ def build_error_embed(message: str) -> discord.Embed:
         description=message,
         colour=COLOR_ERROR,
     )
+
+
+def build_warning_embed(message: str) -> discord.Embed:
+    return discord.Embed(
+        title="⚠️ Aviso",
+        description=message,
+        colour=COLOR_WARNING,
+    )
+
+
+def build_info_embed(title: str, message: str) -> discord.Embed:
+    return discord.Embed(
+        title=title,
+        description=message,
+        colour=COLOR_INFO,
+    )
