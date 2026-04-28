@@ -17,7 +17,8 @@ async def test_skip_sends_feedback_when_no_voice_client():
 
     await cog.skip.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada que skipear.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -32,7 +33,8 @@ async def test_skip_sends_feedback_when_not_playing():
 
     await cog.skip.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada que skipear.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -46,7 +48,8 @@ async def test_pause_sends_feedback_when_no_voice_client():
 
     await cog.pause.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada reproduciéndose para pausar.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -61,7 +64,8 @@ async def test_pause_sends_feedback_when_not_playing():
 
     await cog.pause.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada reproduciéndose para pausar.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -75,7 +79,8 @@ async def test_resume_sends_feedback_when_no_voice_client():
 
     await cog.resume.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada pausado para reanudar.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio
@@ -90,7 +95,8 @@ async def test_resume_sends_feedback_when_not_paused():
 
     await cog.resume.callback(cog, ctx)
 
-    ctx.send.assert_awaited_once_with("No hay nada pausado para reanudar.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs
 
 
 @pytest.mark.asyncio

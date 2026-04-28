@@ -19,6 +19,7 @@ from utils.ui import (
     build_now_playing_embed,
     build_queue_embed,
     build_search_results_embed,
+    build_warning_embed,
 )
 
 # Configure logger
@@ -410,7 +411,7 @@ class Music(commands.Cog):
             else:
                 logger.debug("El usuario no está en un canal de voz")
                 await ctx.send(
-                    "Necesitas estar en un canal de voz para usar este comando."
+                    embed=build_error_embed("Necesitas estar en un canal de voz para usar este comando.")
                 )
                 return False
         except Exception as e:
@@ -643,7 +644,7 @@ class Music(commands.Cog):
             s.queue.clear()
             ctx.voice_client.stop()
             await ctx.voice_client.disconnect()
-            await ctx.send("Reproducción detenida. CHAO CTM!")
+            await ctx.send(embed=build_info_embed("⏹ Detenido", "Reproducción detenida."))
             self._cleanup_state(ctx.guild.id)
             # The check_inactivity loop stops itself once self.states is empty
 
@@ -655,7 +656,7 @@ class Music(commands.Cog):
             await ctx.send("Se skipeó la canción actual.")
             self.update_activity(ctx)  # Update activity when skipping
         else:
-            await ctx.send("No hay nada que skipear.")
+            await ctx.send(embed=build_error_embed("No hay nada que skipear."))
 
     @commands.hybrid_command(name="pause", description="Pauses the current song.")
     async def pause(self, ctx: commands.Context):
@@ -665,7 +666,7 @@ class Music(commands.Cog):
             await ctx.send("Se ha pausado la reproducción.")
             self.update_activity(ctx)  # Update activity when pausing
         else:
-            await ctx.send("No hay nada reproduciéndose para pausar.")
+            await ctx.send(embed=build_error_embed("No hay nada reproduciéndose para pausar."))
 
     @commands.hybrid_command(name="resume", description="Resumes the paused song.")
     async def resume(self, ctx: commands.Context):
@@ -675,7 +676,7 @@ class Music(commands.Cog):
             await ctx.send("Se ha reanudado la reproducción.")
             self.update_activity(ctx)  # Update activity when resuming
         else:
-            await ctx.send("No hay nada pausado para reanudar.")
+            await ctx.send(embed=build_error_embed("No hay nada pausado para reanudar."))
 
     @commands.hybrid_command(name="queue", description="Displays the current song queue.")
     async def queue(self, ctx: commands.Context):
@@ -780,7 +781,7 @@ class Music(commands.Cog):
                         await voice_client.disconnect()
                         if s.inactivity_channel:
                             await s.inactivity_channel.send(
-                                "🛑 Desconectado porque no hay usuarios en el canal."
+                                embed=build_info_embed("⏹ Desconectado", "No hay usuarios en el canal.")
                             )
                         self._cleanup_state(guild_id)
                         continue
@@ -796,8 +797,10 @@ class Music(commands.Cog):
                             INACTIVITY_TIMEOUT - time_since_activity
                         )
                         await s.inactivity_channel.send(
-                            f"⚠️ El bot se desconectará en {remaining_time} segundos por inactividad. "
-                            f"Usa cualquier comando de música para mantener la conexión."
+                            embed=build_warning_embed(
+                                f"El bot se desconectará en {remaining_time} segundos por inactividad. "
+                                f"Usa cualquier comando de música para mantener la conexión."
+                            )
                         )
 
                 # Disconnect for inactivity
@@ -805,7 +808,7 @@ class Music(commands.Cog):
                     await voice_client.disconnect()
                     if s.inactivity_channel:
                         await s.inactivity_channel.send(
-                            "🛑 Desconectado por inactividad."
+                            embed=build_info_embed("⏹ Desconectado", "Bot desconectado por inactividad.")
                         )
                     self._cleanup_state(guild_id)
 
