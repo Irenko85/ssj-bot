@@ -290,6 +290,32 @@ class MusicControlView(discord.ui.View):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @discord.ui.button(
+        emoji="🔀",
+        style=discord.ButtonStyle.secondary,
+        custom_id="shuffle",
+    )
+    async def shuffle(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        state = self.music_cog._state(interaction.guild)
+        if len(state.queue) < 2:
+            await interaction.response.send_message(
+                embed=build_warning_embed("No hay canciones suficientes en la cola para mezclar."),
+                ephemeral=True,
+            )
+            return
+
+        import random
+        random.shuffle(state.queue)
+        self.music_cog.update_activity(interaction.guild)
+        await interaction.response.send_message(
+            embed=build_info_embed("🔀 Shuffle", "La cola fue mezclada."),
+            ephemeral=True,
+        )
+
 
 # Stateless singleton registered with bot.add_view().  Callbacks must NOT
 # mutate this instance; instead they create fresh views via the factory.

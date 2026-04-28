@@ -700,6 +700,8 @@ class Music(commands.Cog):
         else:
             await ctx.send(embed=build_info_embed("📋 Cola de reproducción", "La cola está vacía."))
         self.update_activity(ctx)  # Update activity when viewing queue
+        if s.current_song:
+            await self._publish_now_playing(ctx, s.current_song)
 
     @commands.hybrid_command(
         name="rq", description="Removes a song from the queue by its position in the list."
@@ -718,12 +720,18 @@ class Music(commands.Cog):
             await ctx.send(
                 embed=build_warning_embed("Posición inválida. Asegúrate de que el número esté dentro del rango de la cola.")
             )
+        if s.current_song:
+            await self._publish_now_playing(ctx, s.current_song)
 
     @commands.hybrid_command(name="clear", description="Clears the song queue.")
     async def clear(self, ctx: commands.Context):
         self._state(ctx).queue.clear()
         await ctx.send(embed=build_info_embed("🧹 Cola vaciada", "La cola se vació."))
         self.update_activity(ctx)  # Update activity when clearing queue
+        if ctx.voice_client and ctx.voice_client.is_playing():
+            s = self._state(ctx)
+            if s.current_song:
+                await self._publish_now_playing(ctx, s.current_song)
 
     @commands.hybrid_command(name="shuffle", description="Shuffles the song queue.")
     async def shuffle(self, ctx: commands.Context):
@@ -734,6 +742,8 @@ class Music(commands.Cog):
             self.update_activity(ctx)  # Update activity when shuffling
         else:
             await ctx.send(embed=build_warning_embed("La cola está vacía."))
+        if s.current_song:
+            await self._publish_now_playing(ctx, s.current_song)
 
     @commands.hybrid_command(name="coin", description="Flips a coin.")
     async def coin(self, ctx: commands.Context):

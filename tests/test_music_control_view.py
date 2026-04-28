@@ -42,7 +42,7 @@ def test_music_control_view_has_expected_buttons():
     view = MusicControlView(bot=make_bot())
 
     custom_ids = [child.custom_id for child in view.children]
-    assert custom_ids == ["pause_resume", "skip", "stop", "view_queue"]
+    assert custom_ids == ["pause_resume", "skip", "stop", "view_queue", "shuffle"]
 
 
 def test_factory_returns_fresh_instance():
@@ -145,6 +145,58 @@ async def test_view_queue_button_sends_ephemeral_embed():
     _, kwargs = interaction.response.send_message.call_args
     assert kwargs["ephemeral"] is True
     assert kwargs["embed"].title == "📋 Cola de reproducción"
+
+
+@pytest.mark.asyncio
+async def test_shuffle_button_warns_when_queue_has_zero_items():
+    bot_mock = make_bot()
+    bot_mock.get_cog.return_value._state.return_value = MagicMock(queue=[])
+    view = MusicControlView(bot=bot_mock)
+    interaction = make_interaction()
+
+    button = next(child for child in view.children if child.custom_id == "shuffle")
+    await button.callback(interaction)
+
+    interaction.response.send_message.assert_awaited_once()
+    _, kwargs = interaction.response.send_message.call_args
+    assert kwargs["ephemeral"] is True
+    assert "suficientes" in kwargs["embed"].description.lower()
+
+
+@pytest.mark.asyncio
+async def test_shuffle_button_warns_when_queue_has_one_item():
+    bot_mock = make_bot()
+    bot_mock.get_cog.return_value._state.return_value = MagicMock(queue=[{"title": "Song 1"}])
+    view = MusicControlView(bot=bot_mock)
+    interaction = make_interaction()
+
+    button = next(child for child in view.children if child.custom_id == "shuffle")
+    await button.callback(interaction)
+
+    interaction.response.send_message.assert_awaited_once()
+    _, kwargs = interaction.response.send_message.call_args
+    assert kwargs["ephemeral"] is True
+    assert "suficientes" in kwargs["embed"].description.lower()
+
+
+@pytest.mark.asyncio
+async def test_shuffle_button_shuffles_queue_with_two_or_more_items():
+    bot_mock = make_bot()
+    queue = [{"title": "Song 1"}, {"title": "Song 2"}, {"title": "Song 3"}]
+    bot_mock.get_cog.return_value._state.return_value = MagicMock(queue=queue)
+    view = MusicControlView(bot=bot_mock)
+    interaction = make_interaction()
+
+    with patch("random.shuffle") as mock_shuffle:
+        button = next(child for child in view.children if child.custom_id == "shuffle")
+        await button.callback(interaction)
+
+    mock_shuffle.assert_called_once_with(queue)
+    bot_mock.get_cog.return_value.update_activity.assert_called_once_with(interaction.guild)
+    interaction.response.send_message.assert_awaited_once()
+    _, kwargs = interaction.response.send_message.call_args
+    assert kwargs["ephemeral"] is True
+    assert kwargs["embed"].title == "🔀 Shuffle"
 
 
 @pytest.mark.asyncio
