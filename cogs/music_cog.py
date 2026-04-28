@@ -888,6 +888,9 @@ class SearchSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        # Acknowledge immediately — heavy work follows
+        await interaction.response.defer()
+
         index = int(self.values[0])
         selected_entry = self.entries[index]
         title = selected_entry["title"]
@@ -900,7 +903,7 @@ class SearchSelect(discord.ui.Select):
 
         video_id = selected_entry["id"]
         if not video_id:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=build_error_embed("No se encontró el ID del video."), ephemeral=True
             )
             return
@@ -912,7 +915,7 @@ class SearchSelect(discord.ui.Select):
                 url = info["url"]
                 headers = self.music_cog._extract_http_headers(info, ydl)
         except Exception as e:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=build_error_embed("Error al obtener la URL del video."), ephemeral=True
             )
             logger.error(f"Error obteniendo URL en SearchSelect: {e}")
@@ -920,7 +923,7 @@ class SearchSelect(discord.ui.Select):
 
         full_url = info.get("url", None)
         if not full_url:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=build_error_embed("No se encontró la URL del video."), ephemeral=True
             )
             return
@@ -937,11 +940,10 @@ class SearchSelect(discord.ui.Select):
             "webpage_url": info.get("webpage_url"),
         }
         self.music_cog._state(self.ctx).queue.append(song)
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=build_added_to_queue_embed(song, len(self.music_cog._state(self.ctx).queue))
         )
 
-        # Update activity when adding song
         self.music_cog.update_activity(self.ctx)
 
         if not self.ctx.voice_client.is_playing():

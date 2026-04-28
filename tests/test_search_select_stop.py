@@ -40,6 +40,7 @@ async def test_search_select_callback_calls_view_stop():
     # Safest: patch the property at class level with mock.patch.object.
     interaction = MagicMock()
     interaction.response = MagicMock()
+    interaction.response.defer = AsyncMock()
     interaction.response.send_message = AsyncMock()
     interaction.followup = MagicMock()
     interaction.followup.send = AsyncMock()
@@ -85,6 +86,7 @@ async def test_search_select_callback_does_not_raise_attribute_error():
     view_mock = MagicMock()
     interaction = MagicMock()
     interaction.response = MagicMock()
+    interaction.response.defer = AsyncMock()
     interaction.response.send_message = AsyncMock()
     interaction.followup = MagicMock()
     interaction.followup.send = AsyncMock()
@@ -129,6 +131,7 @@ async def test_search_select_callback_sends_embed_on_success():
     view_mock = MagicMock()
     interaction = MagicMock()
     interaction.response = MagicMock()
+    interaction.response.defer = AsyncMock()
     interaction.response.send_message = AsyncMock()
     interaction.followup = MagicMock()
     interaction.followup.send = AsyncMock()
@@ -145,9 +148,9 @@ async def test_search_select_callback_sends_embed_on_success():
 
             await select.callback(interaction)
 
-    interaction.response.send_message.assert_awaited()
-    _, kwargs = interaction.response.send_message.call_args
-    assert "embed" in kwargs, "Expected embed= in response.send_message"
+    interaction.followup.send.assert_awaited()
+    _, kwargs = interaction.followup.send.call_args
+    assert "embed" in kwargs, "Expected embed= in followup.send"
     embed = kwargs["embed"]
     assert "Añadido a la cola" in embed.title, f"Expected success title, got: {embed.title}"
     assert "Song A" in embed.description, f"Expected song title in description, got: {embed.description}"
@@ -184,6 +187,7 @@ async def test_search_select_callback_without_user_in_voice_channel_sends_error_
     view_mock = MagicMock()
     interaction = MagicMock()
     interaction.response = MagicMock()
+    interaction.response.defer = AsyncMock()
     interaction.response.send_message = AsyncMock()
     interaction.followup = MagicMock()
     interaction.followup.send = AsyncMock()
@@ -210,7 +214,7 @@ async def test_search_select_callback_without_user_in_voice_channel_sends_error_
     assert len(queue) == 0
 
     # Success embed must NOT be sent
-    interaction.response.send_message.assert_not_awaited()
+    interaction.followup.send.assert_not_awaited()
 
     # Playback must NOT start
     music_cog.play_next_in_queue.assert_not_awaited()
