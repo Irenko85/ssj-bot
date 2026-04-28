@@ -947,7 +947,8 @@ class SearchSelect(discord.ui.Select):
         if not self.ctx.voice_client.is_playing():
             await self.music_cog.play_next_in_queue(self.ctx)
 
-        await interaction.message.delete()
+        with contextlib.suppress(discord.errors.NotFound):
+            await interaction.message.delete()
         self.view.stop()
 
 
