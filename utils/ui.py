@@ -112,7 +112,7 @@ def build_queue_embed(
 
     embed = discord.Embed(
         title="📋 Cola de reproducción",
-        description=f"▶ Ahora: {now_playing}\n\n{queue_text}",
+        description=f"▶ Ahora: {now_playing or 'Nada'}\n\n{queue_text}",
         colour=COLOR_SUCCESS,
     )
     embed.set_footer(text=f"Página {page}/{total_pages} · {total} canciones en cola")

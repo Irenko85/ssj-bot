@@ -114,6 +114,13 @@ def test_build_queue_embed_renders_single_song():
     assert embed.footer.text == "Página 1/1 · 1 canciones en cola"
 
 
+def test_build_queue_embed_replaces_none_now_playing():
+    embed = build_queue_embed([], now_playing=None)
+
+    assert "▶ Ahora: Nada" in embed.description
+    assert "None" not in embed.description
+
+
 def test_build_queue_embed_paginates_results():
     songs = [{"title": f"Song {i}"} for i in range(1, 16)]
 
