@@ -566,12 +566,13 @@ class Music(commands.Cog):
                             search_opts = YTDL_OPTIONS.copy()
                             search_opts["extract_flat"] = True
                             search_opts["skip_download"] = True
+                            search_opts["noplaylists"] = False
                             search_opts.pop("playlist_items", None)
                             with SafeYoutubeDL(search_opts) as ydl_search:
                                 search_info = await self._extract_info(
-                                    ydl_search, f"ytsearch5:{search}", download=False
+                                    ydl_search, f"https://music.youtube.com/search?q={search}", download=False
                                 )
-                            entries = search_info.get("entries") or []
+                            entries = list(search_info.get("entries") or [])[:5]
                             if not entries:
                                 await ctx.send(embed=build_error_embed("No se encontraron resultados."))
                                 return
