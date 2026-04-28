@@ -910,10 +910,11 @@ class SearchSelect(discord.ui.Select):
             )
             return
 
-        self.music_cog._state(self.ctx).queue.append(
-            {"title": title, "url": full_url, "headers": headers}
+        song = {"title": title, "url": full_url, "headers": headers}
+        self.music_cog._state(self.ctx).queue.append(song)
+        await interaction.response.send_message(
+            embed=build_added_to_queue_embed(song, len(self.music_cog._state(self.ctx).queue))
         )
-        await interaction.response.send_message(embed=build_info_embed("Añadido a la cola", f"**{title}**"))
 
         # Update activity when adding song
         self.music_cog.update_activity(self.ctx)

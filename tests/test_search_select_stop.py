@@ -149,4 +149,5 @@ async def test_search_select_callback_sends_embed_on_success():
     _, kwargs = interaction.response.send_message.call_args
     assert "embed" in kwargs, "Expected embed= in response.send_message"
     embed = kwargs["embed"]
-    assert hasattr(embed, "title"), "Expected an Embed object"
+    assert "Añadido a la cola" in embed.title, f"Expected success title, got: {embed.title}"
+    assert "Song A" in embed.description, f"Expected song title in description, got: {embed.description}"
