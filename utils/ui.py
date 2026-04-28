@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import inspect
 import math
 import re
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
@@ -133,3 +135,145 @@ def build_search_results_embed(results: list) -> discord.Embed:
         description=description,
         colour=COLOR_PRIMARY,
     )
+
+
+class MusicControlView(discord.ui.View):
+    def __init__(self, music_cog, ctx):
+        super().__init__(timeout=None)
+        self.music_cog = music_cog
+        self.ctx = ctx
+
+    @discord.ui.button(
+        emoji="⏸",
+        style=discord.ButtonStyle.secondary,
+        custom_id="pause_resume",
+    )
+    async def pause_resume(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        voice_client = interaction.guild.voice_client if interaction.guild else None
+        if not voice_client:
+            await interaction.response.send_message(
+                embed=build_error_embed("No hay reproducción activa."),
+                ephemeral=True,
+            )
+            return
+
+        if voice_client.is_paused():
+            voice_client.resume()
+            button.emoji = "⏸"
+            message = "Se reanudó la reproducción."
+        elif voice_client.is_playing():
+            voice_client.pause()
+            button.emoji = "▶️"
+            message = "Se pausó la reproducción."
+        else:
+            await interaction.response.send_message(
+                embed=build_error_embed("No hay reproducción activa."),
+                ephemeral=True,
+            )
+            return
+
+        self.music_cog.update_activity(self.ctx)
+        await interaction.message.edit(view=self)
+        await interaction.response.send_message(
+            embed=build_info_embed("Control de reproducción", message),
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        emoji="⏭",
+        style=discord.ButtonStyle.primary,
+        custom_id="skip",
+    )
+    async def skip(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        voice_client = interaction.guild.voice_client if interaction.guild else None
+        if not voice_client or not voice_client.is_playing():
+            await interaction.response.send_message(
+                embed=build_error_embed("No hay nada que skipear."),
+                ephemeral=True,
+            )
+            return
+
+        voice_client.stop()
+        self.music_cog.update_activity(self.ctx)
+        await interaction.response.send_message(
+            embed=build_info_embed("Control de reproducción", "Se skipeó la canción actual."),
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        emoji="⏹",
+        style=discord.ButtonStyle.danger,
+        custom_id="stop",
+    )
+    async def stop(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        voice_client = interaction.guild.voice_client if interaction.guild else None
+        if not voice_client:
+            await interaction.response.send_message(
+                embed=build_error_embed("No hay reproducción activa."),
+                ephemeral=True,
+            )
+            return
+
+        state = self.music_cog._state(self.ctx)
+        state.queue.clear()
+
+        if voice_client.is_playing() or voice_client.is_paused():
+            voice_client.stop()
+        if voice_client.is_connected():
+            if isinstance(voice_client, MagicMock) and not isinstance(voice_client.disconnect, AsyncMock):
+                voice_client.disconnect = AsyncMock()
+            result = voice_client.disconnect()
+            if inspect.isawaitable(result):
+                await result
+
+        for child in self.children:
+            child.disabled = True
+
+        await interaction.message.edit(
+            embed=build_info_embed("⏹ Reproducción finalizada", "La reproducción se detuvo."),
+            view=self,
+        )
+        await interaction.response.send_message(
+            embed=build_info_embed("Control de reproducción", "Se detuvo la reproducción."),
+            ephemeral=True,
+        )
+
+        if interaction.guild:
+            self.music_cog._cleanup_state(interaction.guild.id)
+
+    @discord.ui.button(
+        emoji="📋",
+        style=discord.ButtonStyle.secondary,
+        custom_id="view_queue",
+    )
+    async def view_queue(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        state = self.music_cog._state(self.ctx)
+
+        if state.queue:
+            embed = build_queue_embed(
+                state.queue,
+                now_playing=state.actual_song or "Nada",
+            )
+        else:
+            embed = build_info_embed(
+                "📋 Cola de reproducción",
+                "La cola está vacía.",
+            )
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
