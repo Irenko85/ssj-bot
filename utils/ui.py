@@ -65,9 +65,13 @@ def build_now_playing_embed(song: dict) -> discord.Embed:
         colour=COLOR_PRIMARY,
     )
 
-    video_id = _extract_youtube_video_id(source_url)
-    if video_id:
-        embed.set_thumbnail(url=f"https://img.youtube.com/vi/{video_id}/0.jpg")
+    thumbnail = song.get("thumbnail")
+    if thumbnail:
+        embed.set_thumbnail(url=thumbnail)
+    else:
+        video_id = _extract_youtube_video_id(source_url)
+        if video_id:
+            embed.set_thumbnail(url=f"https://img.youtube.com/vi/{video_id}/0.jpg")
 
     duration = song.get("duration")
     if duration:
@@ -84,6 +88,9 @@ def build_added_to_queue_embed(song: dict, position: int) -> discord.Embed:
         colour=COLOR_SUCCESS,
     )
     embed.add_field(name="Posición en cola", value=str(position), inline=True)
+    thumbnail = song.get("thumbnail")
+    if thumbnail:
+        embed.set_thumbnail(url=thumbnail)
     return embed
 
 

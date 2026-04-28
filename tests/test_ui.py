@@ -91,6 +91,44 @@ def test_build_added_to_queue_embed_shows_position():
     assert embed.fields[0].value == "3"
 
 
+def test_build_now_playing_embed_uses_explicit_thumbnail_and_duration():
+    embed = build_now_playing_embed(
+        {
+            "title": "Cha-La Head-Cha-La",
+            "thumbnail": "https://cdn.example/thumb.jpg",
+            "duration": 213,
+            "webpage_url": "https://www.youtube.com/watch?v=YnL70cee6qo",
+        }
+    )
+    assert embed.title == "🎵 Ahora reproduciendo"
+    assert embed.thumbnail.url == "https://cdn.example/thumb.jpg"
+    assert len(embed.fields) == 1
+    assert embed.fields[0].name == "Duración"
+    assert embed.fields[0].value == "213"
+
+
+def test_build_added_to_queue_embed_sets_thumbnail_when_present():
+    embed = build_added_to_queue_embed(
+        {
+            "title": "Limit Break x Survivor",
+            "thumbnail": "https://cdn.example/queue-thumb.jpg",
+        },
+        position=3,
+    )
+    assert embed.title == "✅ Añadido a la cola"
+    assert embed.description == "Limit Break x Survivor"
+    assert embed.thumbnail.url == "https://cdn.example/queue-thumb.jpg"
+
+
+def test_build_added_to_queue_embed_skips_thumbnail_when_missing():
+    embed = build_added_to_queue_embed(
+        {"title": "Limit Break x Survivor"},
+        position=3,
+    )
+    assert embed.title == "✅ Añadido a la cola"
+    assert embed.thumbnail.url is None
+
+
 from utils.ui import build_queue_embed
 
 

@@ -596,7 +596,14 @@ class Music(commands.Cog):
                             logger.debug(f"Video encontrado: {title}")
 
                         logger.debug(f"Agregando a la cola: {title}")
-                        song = {"title": title, "url": url, "headers": headers}
+                        song = {
+                            "title": title,
+                            "url": url,
+                            "headers": headers,
+                            "thumbnail": info.get("thumbnail"),
+                            "duration": info.get("duration"),
+                            "webpage_url": info.get("webpage_url"),
+                        }
                         self._state(ctx).queue.append(song)
                         if not silent:
                             logger.debug("Enviando mensaje de confirmación...")
@@ -913,7 +920,14 @@ class SearchSelect(discord.ui.Select):
         if not await self.music_cog.join_voice_channel(self.ctx):
             return
 
-        song = {"title": title, "url": full_url, "headers": headers}
+        song = {
+            "title": title,
+            "url": full_url,
+            "headers": headers,
+            "thumbnail": info.get("thumbnail"),
+            "duration": info.get("duration"),
+            "webpage_url": info.get("webpage_url"),
+        }
         self.music_cog._state(self.ctx).queue.append(song)
         await interaction.response.send_message(
             embed=build_added_to_queue_embed(song, len(self.music_cog._state(self.ctx).queue))
