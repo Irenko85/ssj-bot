@@ -115,6 +115,7 @@ class GuildState:
     __slots__ = (
         "queue",
         "actual_song",
+        "current_song",
         "last_activity",
         "inactivity_warned",
         "inactivity_channel",
@@ -124,6 +125,7 @@ class GuildState:
     def __init__(self) -> None:
         self.queue: list[dict] = []
         self.actual_song: str | None = None
+        self.current_song: dict | None = None
         self.last_activity: float = time()
         self.inactivity_warned: bool = False
         self.inactivity_channel: discord.TextChannel | None = None
@@ -277,6 +279,7 @@ class Music(commands.Cog):
         """Deshabilita los botones del mensaje Now Playing cuando termina la reproducción."""
         s = self._state(ctx)
         s.actual_song = None
+        s.current_song = None
 
         if s.now_playing_message is None:
             return
@@ -309,6 +312,7 @@ class Music(commands.Cog):
 
         s.actual_song = s.queue[0]["title"]
         song = s.queue.pop(0)
+        s.current_song = song
         logger.info(
             "starting playback in guild %s: %r",
             ctx.guild.id if ctx.guild else None, s.actual_song,
@@ -565,7 +569,7 @@ class Music(commands.Cog):
                             search_opts.pop("playlist_items", None)
                             with SafeYoutubeDL(search_opts) as ydl_search:
                                 search_info = await self._extract_info(
-                                    ydl_search, f"ytsearch5:{search}", download=False
+                                    ydl_search, f"ytmsearch5:{search}", download=False
                                 )
                             entries = search_info.get("entries") or []
                             if not entries:
@@ -638,6 +642,9 @@ class Music(commands.Cog):
                 await self.play_next_in_queue(ctx)
             else:
                 logger.debug("Ya hay una canción reproduciéndose")
+                s = self._state(ctx)
+                if s.current_song:
+                    await self._publish_now_playing(ctx, s.current_song)
         else:
             logger.error("voice_client no está conectado después de join_voice_channel")
             await ctx.send(embed=build_error_embed("No se pudo establecer conexión con el canal de voz."))

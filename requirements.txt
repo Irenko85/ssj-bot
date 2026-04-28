@@ -25,3 +25,4 @@ websockets==13.1
 yarl==1.17.1
 yt-dlp==2026.1.31
 yt-dlp-ejs==0.4.0
+tzdata

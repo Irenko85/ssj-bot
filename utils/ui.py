@@ -55,6 +55,17 @@ def _extract_youtube_video_id(url: str | None) -> str | None:
     return None
 
 
+def _format_duration(seconds: int | float | None) -> str | None:
+    if not seconds:
+        return None
+    total_seconds = int(seconds)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
+
+
 def build_now_playing_embed(song: dict) -> discord.Embed:
     title = song.get("title", "Título desconocido")
     source_url = song.get("source_url") or song.get("webpage_url") or song.get("url")
@@ -73,9 +84,9 @@ def build_now_playing_embed(song: dict) -> discord.Embed:
         if video_id:
             embed.set_thumbnail(url=f"https://img.youtube.com/vi/{video_id}/0.jpg")
 
-    duration = song.get("duration")
+    duration = _format_duration(song.get("duration"))
     if duration:
-        embed.add_field(name="Duración", value=str(duration), inline=True)
+        embed.add_field(name="Duración", value=duration, inline=True)
 
     embed.set_footer(text=_build_footer_text())
     return embed

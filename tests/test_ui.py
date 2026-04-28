@@ -104,7 +104,25 @@ def test_build_now_playing_embed_uses_explicit_thumbnail_and_duration():
     assert embed.thumbnail.url == "https://cdn.example/thumb.jpg"
     assert len(embed.fields) == 1
     assert embed.fields[0].name == "Duración"
-    assert embed.fields[0].value == "213"
+    assert embed.fields[0].value == "3:33"
+
+
+def test_format_duration_under_one_hour():
+    song = {"title": "Tema", "duration": 95}
+    embed = build_now_playing_embed(song)
+    assert embed.fields[0].value == "1:35"
+
+
+def test_format_duration_exact_minutes():
+    song = {"title": "Tema", "duration": 240}
+    embed = build_now_playing_embed(song)
+    assert embed.fields[0].value == "4:00"
+
+
+def test_format_duration_over_one_hour():
+    song = {"title": "Tema", "duration": 3735}
+    embed = build_now_playing_embed(song)
+    assert embed.fields[0].value == "1:02:15"
 
 
 def test_build_added_to_queue_embed_sets_thumbnail_when_present():
