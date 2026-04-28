@@ -49,7 +49,7 @@ def test_build_now_playing_embed_adds_youtube_thumbnail():
     assert embed.title == "🎵 Ahora reproduciendo"
     assert embed.description == "**Cha-La Head-Cha-La**"
     assert embed.colour.value == COLOR_PRIMARY
-    assert embed.thumbnail.url == "https://i.ytimg.com/vi/YnL70cee6qo/maxresdefault.jpg"
+    assert embed.image.url == "https://i.ytimg.com/vi/YnL70cee6qo/maxresdefault.jpg"
     assert embed.footer.text.startswith("SSJ Bot · ")
 
 
@@ -62,7 +62,7 @@ def test_build_now_playing_embed_ignores_url_without_video_id():
     )
 
     assert embed.title == "🎵 Ahora reproduciendo"
-    assert embed.thumbnail.url is None
+    assert embed.image.url is None
 
 
 def test_build_now_playing_embed_ignores_soundcloud_url():
@@ -74,7 +74,7 @@ def test_build_now_playing_embed_ignores_soundcloud_url():
     )
 
     assert embed.title == "🎵 Ahora reproduciendo"
-    assert embed.thumbnail.url is None
+    assert embed.image.url is None
 
 
 from utils.ui import COLOR_SUCCESS, build_added_to_queue_embed
@@ -100,7 +100,7 @@ def test_build_now_playing_embed_uses_explicit_thumbnail_and_duration():
         }
     )
     assert embed.title == "🎵 Ahora reproduciendo"
-    assert embed.thumbnail.url == "https://cdn.example/thumb.jpg"
+    assert embed.image.url == "https://cdn.example/thumb.jpg"
     assert len(embed.fields) == 1
     assert embed.fields[0].name == "Duración"
     assert embed.fields[0].value == "3:33"
