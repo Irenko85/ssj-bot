@@ -12,7 +12,6 @@ from time import time
 from utils import utils
 from discord.ext import commands, tasks
 from utils.ui import (
-    MusicControlView,
     build_added_to_queue_embed,
     build_error_embed,
     build_info_embed,
