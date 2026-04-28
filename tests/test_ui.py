@@ -33,3 +33,45 @@ def test_build_info_embed_uses_custom_title():
     assert embed.title == "Cola"
     assert embed.description == "Sin canciones"
     assert embed.colour.value == COLOR_INFO
+
+
+from utils.ui import COLOR_PRIMARY, build_now_playing_embed
+
+
+def test_build_now_playing_embed_adds_youtube_thumbnail():
+    embed = build_now_playing_embed(
+        {
+            "title": "Cha-La Head-Cha-La",
+            "source_url": "https://www.youtube.com/watch?v=YnL70cee6qo",
+        }
+    )
+
+    assert embed.title == "🎵 Ahora reproduciendo"
+    assert embed.description == "**Cha-La Head-Cha-La**"
+    assert embed.colour.value == COLOR_PRIMARY
+    assert embed.thumbnail.url == "https://img.youtube.com/vi/YnL70cee6qo/0.jpg"
+    assert embed.footer.text.startswith("SSJ Bot · ")
+
+
+def test_build_now_playing_embed_ignores_url_without_video_id():
+    embed = build_now_playing_embed(
+        {
+            "title": "Unknown",
+            "source_url": "https://www.youtube.com/watch",
+        }
+    )
+
+    assert embed.title == "🎵 Ahora reproduciendo"
+    assert embed.thumbnail.url is None
+
+
+def test_build_now_playing_embed_ignores_soundcloud_url():
+    embed = build_now_playing_embed(
+        {
+            "title": "Sound",
+            "source_url": "https://soundcloud.com/artist/song",
+        }
+    )
+
+    assert embed.title == "🎵 Ahora reproduciendo"
+    assert embed.thumbnail.url is None

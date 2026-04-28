@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+import re
+
 import discord
 
 COLOR_PRIMARY = 0x6C3483
@@ -7,6 +10,11 @@ COLOR_SUCCESS = 0x2980B9
 COLOR_ERROR = 0x922B21
 COLOR_WARNING = 0xCA6F1E
 COLOR_INFO = 0x2C3E50
+
+BOT_LABEL = "SSJ Bot"
+YOUTUBE_VIDEO_RE = re.compile(
+    r"(?:youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
 
 
 def build_error_embed(message: str) -> discord.Embed:
@@ -31,3 +39,38 @@ def build_info_embed(title: str, message: str) -> discord.Embed:
         description=message,
         colour=COLOR_INFO,
     )
+
+
+def _build_footer_text() -> str:
+    return f"{BOT_LABEL} · {discord.utils.utcnow().strftime('%H:%M')}"
+
+
+def _extract_youtube_video_id(url: str | None) -> str | None:
+    if not url:
+        return None
+    match = YOUTUBE_VIDEO_RE.search(url)
+    if match:
+        return match.group(1)
+    return None
+
+
+def build_now_playing_embed(song: dict) -> discord.Embed:
+    title = song.get("title", "Título desconocido")
+    source_url = song.get("source_url") or song.get("webpage_url") or song.get("url")
+
+    embed = discord.Embed(
+        title="🎵 Ahora reproduciendo",
+        description=f"**{title}**",
+        colour=COLOR_PRIMARY,
+    )
+
+    video_id = _extract_youtube_video_id(source_url)
+    if video_id:
+        embed.set_thumbnail(url=f"https://img.youtube.com/vi/{video_id}/0.jpg")
+
+    duration = song.get("duration")
+    if duration:
+        embed.add_field(name="Duración", value=str(duration), inline=True)
+
+    embed.set_footer(text=_build_footer_text())
+    return embed
