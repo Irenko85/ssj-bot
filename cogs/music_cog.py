@@ -258,17 +258,17 @@ class Music(commands.Cog):
         return await ctx.send(embed=embed)
 
     async def _publish_now_playing(self, ctx, song: dict):
-        """Envía o edita el mensaje de Now Playing con embed + botones."""
+        """Envía el mensaje de Now Playing con embed + botones, siempre al final del chat."""
         s = self._state(ctx)
         embed = build_now_playing_embed(song)
         view = make_music_control_view(self.bot, music_cog=self)
 
         if s.now_playing_message is not None:
             try:
-                await s.now_playing_message.edit(embed=embed, view=view)
-                return s.now_playing_message
+                await s.now_playing_message.delete()
             except Exception:
-                s.now_playing_message = None
+                pass
+            s.now_playing_message = None
 
         s.now_playing_message = await ctx.send(embed=embed, view=view)
         return s.now_playing_message
