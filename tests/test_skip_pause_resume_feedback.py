@@ -113,4 +113,5 @@ async def test_skip_still_works_when_playing():
     await cog.skip.callback(cog, ctx)
 
     ctx.voice_client.stop.assert_called_once()
-    ctx.send.assert_awaited_once_with("Se skipeó la canción actual.")
+    ctx.send.assert_awaited_once()
+    assert "embed" in ctx.send.call_args.kwargs

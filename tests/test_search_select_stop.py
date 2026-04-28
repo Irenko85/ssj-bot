@@ -101,3 +101,52 @@ async def test_search_select_callback_does_not_raise_attribute_error():
 
             # If self.stop() is still in code, this raises AttributeError.
             await select.callback(interaction)
+
+
+@pytest.mark.asyncio
+async def test_search_select_callback_sends_embed_on_success():
+    """SearchSelect.callback must send an embed when adding song to queue."""
+    entries = [{"title": "Song A", "id": "abc123"}]
+
+    music_cog = MagicMock()
+    music_cog._extract_info = AsyncMock(
+        return_value={"url": "https://stream.url", "http_headers": {}}
+    )
+    music_cog._extract_http_headers = MagicMock(return_value={})
+    music_cog._state = MagicMock(return_value=MagicMock(queue=[]))
+    music_cog.update_activity = MagicMock()
+    music_cog.join_voice_channel = AsyncMock()
+    music_cog.play_next_in_queue = AsyncMock()
+
+    ctx = MagicMock()
+    ctx.voice_client = MagicMock()
+    ctx.voice_client.is_connected = MagicMock(return_value=True)
+    ctx.voice_client.is_playing = MagicMock(return_value=False)
+
+    select = SearchSelect(entries, music_cog, ctx)
+    select._values = ["0"]
+
+    view_mock = MagicMock()
+    interaction = MagicMock()
+    interaction.response = MagicMock()
+    interaction.response.send_message = AsyncMock()
+    interaction.followup = MagicMock()
+    interaction.followup.send = AsyncMock()
+    interaction.message = MagicMock()
+    interaction.message.delete = AsyncMock()
+
+    with patch.object(
+        type(select), "view", new_callable=lambda: property(lambda self: view_mock)
+    ):
+        with patch("cogs.music_cog.SafeYoutubeDL") as ydl_class:
+            ydl_instance = MagicMock()
+            ydl_class.return_value.__enter__ = MagicMock(return_value=ydl_instance)
+            ydl_class.return_value.__exit__ = MagicMock(return_value=False)
+
+            await select.callback(interaction)
+
+    interaction.response.send_message.assert_awaited()
+    _, kwargs = interaction.response.send_message.call_args
+    assert "embed" in kwargs, "Expected embed= in response.send_message"
+    embed = kwargs["embed"]
+    assert hasattr(embed, "title"), "Expected an Embed object"

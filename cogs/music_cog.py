@@ -187,7 +187,7 @@ class Music(commands.Cog):
     async def cog_check(self, ctx) -> bool:
         """Reject any music command issued outside a guild (e.g. DMs)."""
         if ctx.guild is None:
-            await ctx.send("Los comandos de música solo funcionan en servidores.")
+            await ctx.send(embed=build_error_embed("Los comandos de música solo funcionan en servidores."))
             return False
         return True
 
@@ -304,7 +304,7 @@ class Music(commands.Cog):
         # Verify that voice_client is available and connected
         if not ctx.voice_client or not ctx.voice_client.is_connected():
             logger.error("voice_client no está conectado en play_next_in_queue")
-            await ctx.send("Error: El bot no está conectado a un canal de voz.")
+            await ctx.send(embed=build_error_embed("El bot no está conectado a un canal de voz."))
             return
 
         s.actual_song = s.queue[0]["title"]
@@ -380,13 +380,13 @@ class Music(commands.Cog):
                     except asyncio.TimeoutError:
                         logger.error("Timeout al conectar al canal de voz")
                         await ctx.send(
-                            "Error: Tiempo de espera agotado al conectar al canal de voz."
+                            embed=build_error_embed("Tiempo de espera agotado al conectar al canal de voz.")
                         )
                         return False
                     except Exception as e:
                         logger.error(f"Error al conectar: {type(e).__name__}: {e}")
                         logger.error(traceback.format_exc())
-                        await ctx.send(f"Error al conectar al canal de voz: {e}")
+                        await ctx.send(embed=build_error_embed(f"Error al conectar al canal de voz: {e}"))
                         return False
 
                     # Add a small delay to ensure the connection is ready
@@ -415,7 +415,7 @@ class Music(commands.Cog):
         except Exception as e:
             logger.error(f"Exception en join_voice_channel: {type(e).__name__}: {e}")
             logger.error(traceback.format_exc())
-            await ctx.send(f"Error inesperado al unirse al canal de voz.")
+            await ctx.send(embed=build_error_embed("Error inesperado al unirse al canal de voz."))
             return False
 
     async def play_playlist(self, ctx, playlist_url: str, shuffle: bool = False):
@@ -425,7 +425,7 @@ class Music(commands.Cog):
         video_urls = await utils.get_video_urls_from_playlist(playlist_url)
         logger.debug(f"Video URLs before: {video_urls}")
         if not video_urls:
-            await ctx.send(f"No se pudo cargar la playlist.")
+            await ctx.send(embed=build_error_embed("No se pudo cargar la playlist."))
             return
 
         if shuffle:
@@ -436,11 +436,11 @@ class Music(commands.Cog):
             try:
                 await self._play_internal(ctx, url, silent=True)
             except Exception as e:
-                await ctx.send(f"Error al reproducir una canción de la playlist.")
+                await ctx.send(embed=build_error_embed("Error al reproducir una canción de la playlist."))
                 logger.error(f"Error reproduciendo playlist: {e}")
 
         self.start_inactivity_check(ctx)
-        await ctx.send(f"Se agregó la playlist a la cola.")
+        await ctx.send(embed=build_info_embed("Playlist añadida", "Se agregó la playlist a la cola."))
 
     def start_inactivity_check(self, ctx):
         """Make sure the per-guild inactivity loop is tracking this guild."""
@@ -498,7 +498,7 @@ class Music(commands.Cog):
         except Exception as e:
             logger.error(f"Exception al inicio de play(): {type(e).__name__}: {e}")
             logger.error(traceback.format_exc())
-            await ctx.send("Error al iniciar la reproducción.")
+            await ctx.send(embed=build_error_embed("Error al iniciar la reproducción."))
             return
 
         async with ctx.typing():
@@ -512,12 +512,12 @@ class Music(commands.Cog):
                     video_urls = await utils.get_video_urls_from_playlist(search)
                     if not video_urls:
                         await ctx.send(
-                            "No se pudieron obtener canciones de la playlist."
+                            embed=build_error_embed("No se pudieron obtener canciones de la playlist.")
                         )
                         return
 
                     await ctx.send(
-                        f"Agregando {len(video_urls)} canciones a la cola..."
+                        embed=build_info_embed("Procesando playlist", f"Agregando {len(video_urls)} canciones a la cola...")
                     )
                     await self.play_playlist(ctx, search)
                 else:
@@ -569,14 +569,14 @@ class Music(commands.Cog):
                                 )
                             entries = search_info.get("entries") or []
                             if not entries:
-                                await ctx.send("No se encontraron resultados.")
+                                await ctx.send(embed=build_error_embed("No se encontraron resultados."))
                                 return
                             entries = [
                                 e for e in entries if e.get("ie_key") == "Youtube"
                             ]
                             if not entries:
                                 await ctx.send(
-                                    "No se encontraron videos reproducibles."
+                                    embed=build_error_embed("No se encontraron videos reproducibles.")
                                 )
                                 return
 
@@ -586,7 +586,7 @@ class Music(commands.Cog):
 
                             if not info:
                                 await ctx.send(
-                                    "No se encontró un formato compatible para los resultados."
+                                    embed=build_error_embed("No se encontró un formato compatible para los resultados.")
                                 )
                                 return
 
@@ -609,7 +609,7 @@ class Music(commands.Cog):
                 logger.error(f"Exception en play(): {type(e).__name__}: {e}")
                 logger.error(traceback.format_exc())
                 await ctx.send(
-                    "Ocurrió un error al intentar procesar la canción o playlist."
+                    embed=build_error_embed("Ocurrió un error al intentar procesar la canción o playlist.")
                 )
                 logger.debug("Mensaje de error enviado al chat")
 
@@ -633,7 +633,7 @@ class Music(commands.Cog):
                 logger.debug("Ya hay una canción reproduciéndose")
         else:
             logger.error("voice_client no está conectado después de join_voice_channel")
-            await ctx.send("Error: No se pudo establecer conexión con el canal de voz.")
+            await ctx.send(embed=build_error_embed("No se pudo establecer conexión con el canal de voz."))
 
     @commands.hybrid_command(name="stop", description="Stops playback and leaves the voice channel.")
     async def stop(self, ctx: commands.Context):
@@ -652,7 +652,7 @@ class Music(commands.Cog):
         logger.info("skip invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
-            await ctx.send("Se skipeó la canción actual.")
+            await ctx.send(embed=build_info_embed("⏭ Skipeado", "Se skipeó la canción actual."))
             self.update_activity(ctx)  # Update activity when skipping
         else:
             await ctx.send(embed=build_error_embed("No hay nada que skipear."))
@@ -662,7 +662,7 @@ class Music(commands.Cog):
         logger.info("pause invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
-            await ctx.send("Se ha pausado la reproducción.")
+            await ctx.send(embed=build_info_embed("⏸ Pausado", "Se ha pausado la reproducción."))
             self.update_activity(ctx)  # Update activity when pausing
         else:
             await ctx.send(embed=build_error_embed("No hay nada reproduciéndose para pausar."))
@@ -672,7 +672,7 @@ class Music(commands.Cog):
         logger.info("resume invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
-            await ctx.send("Se ha reanudado la reproducción.")
+            await ctx.send(embed=build_info_embed("▶ Reanudado", "Se ha reanudado la reproducción."))
             self.update_activity(ctx)  # Update activity when resuming
         else:
             await ctx.send(embed=build_error_embed("No hay nada pausado para reanudar."))
@@ -683,7 +683,7 @@ class Music(commands.Cog):
         if s.queue:
             await ctx.send(embed=build_queue_embed(s.queue, s.actual_song))
         else:
-            await ctx.send("La cola está vacía.")
+            await ctx.send(embed=build_info_embed("📋 Cola de reproducción", "La cola está vacía."))
         self.update_activity(ctx)  # Update activity when viewing queue
 
     @commands.hybrid_command(
@@ -692,22 +692,22 @@ class Music(commands.Cog):
     async def remove_from_queue(self, ctx: commands.Context, position: int):
         s = self._state(ctx)
         if not s.queue:
-            await ctx.send("La cola está vacía.")
+            await ctx.send(embed=build_error_embed("La cola está vacía."))
             return
 
         try:
             removed = s.queue.pop(position - 1)
-            await ctx.send(f"Se ha eliminado de la cola: **{removed['title']}**")
+            await ctx.send(embed=build_info_embed("🗑️ Eliminado", f"Se ha eliminado de la cola: **{removed['title']}**"))
             self.update_activity(ctx)  # Update activity when removing song
         except IndexError:
             await ctx.send(
-                "Posición inválida. Asegúrate de que el número esté dentro del rango de la cola."
+                embed=build_warning_embed("Posición inválida. Asegúrate de que el número esté dentro del rango de la cola.")
             )
 
     @commands.hybrid_command(name="clear", description="Clears the song queue.")
     async def clear(self, ctx: commands.Context):
         self._state(ctx).queue.clear()
-        await ctx.send("La cola se vació.")
+        await ctx.send(embed=build_info_embed("🧹 Cola vaciada", "La cola se vació."))
         self.update_activity(ctx)  # Update activity when clearing queue
 
     @commands.hybrid_command(name="shuffle", description="Shuffles the song queue.")
@@ -718,13 +718,13 @@ class Music(commands.Cog):
             await ctx.invoke(self.bot.get_command("queue"))
             self.update_activity(ctx)  # Update activity when shuffling
         else:
-            await ctx.send("La cola está vacía.")
+            await ctx.send(embed=build_warning_embed("La cola está vacía."))
 
     @commands.hybrid_command(name="coin", description="Flips a coin.")
     async def coin(self, ctx: commands.Context):
         logger.info("coin invoked by %s in guild %s", ctx.author, ctx.guild.id if ctx.guild else None)
         result = random.choice(["Cara", "Sello"])
-        await ctx.send(f"Resultado: **{result}**")
+        await ctx.send(embed=build_info_embed("🪙 Moneda", f"Resultado: **{result}**"))
 
     @tasks.loop(seconds=15)
     async def check_inactivity(self):
@@ -843,7 +843,7 @@ class Music(commands.Cog):
                     return
 
         if not entries:
-            await ctx.send("No se encontraron resultados.")
+            await ctx.send(embed=build_error_embed("No se encontraron resultados."))
             return
 
         view = SearchView(entries, self, ctx)
@@ -886,7 +886,7 @@ class SearchSelect(discord.ui.Select):
         video_id = selected_entry["id"]
         if not video_id:
             await interaction.response.send_message(
-                "No se encontró el ID del video.", ephemeral=True
+                embed=build_error_embed("No se encontró el ID del video."), ephemeral=True
             )
             return
 
@@ -898,7 +898,7 @@ class SearchSelect(discord.ui.Select):
                 headers = self.music_cog._extract_http_headers(info, ydl)
         except Exception as e:
             await interaction.response.send_message(
-                "Error al obtener la URL del video.", ephemeral=True
+                embed=build_error_embed("Error al obtener la URL del video."), ephemeral=True
             )
             logger.error(f"Error obteniendo URL en SearchSelect: {e}")
             return
@@ -906,14 +906,14 @@ class SearchSelect(discord.ui.Select):
         full_url = info.get("url", None)
         if not full_url:
             await interaction.response.send_message(
-                "No se encontró la URL del video.", ephemeral=True
+                embed=build_error_embed("No se encontró la URL del video."), ephemeral=True
             )
             return
 
         self.music_cog._state(self.ctx).queue.append(
             {"title": title, "url": full_url, "headers": headers}
         )
-        await interaction.response.send_message(f"Se agregó a la cola: **{title}**")
+        await interaction.response.send_message(embed=build_info_embed("Añadido a la cola", f"**{title}**"))
 
         # Update activity when adding song
         self.music_cog.update_activity(self.ctx)
@@ -923,7 +923,7 @@ class SearchSelect(discord.ui.Select):
                 await self.music_cog.join_voice_channel(self.ctx)
             else:
                 await interaction.followup.send(
-                    "Debes estar en un canal de voz para reproducir la canción.",
+                    embed=build_error_embed("Debes estar en un canal de voz para reproducir la canción."),
                     ephemeral=True,
                 )
                 return
@@ -944,7 +944,7 @@ class SearchView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user != self.author:
             await interaction.response.send_message(
-                "No puedes interactuar con este menú.", ephemeral=True
+                embed=build_warning_embed("No puedes interactuar con este menú."), ephemeral=True
             )
             return False
         return True

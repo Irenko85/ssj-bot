@@ -109,12 +109,12 @@ async def on_app_command_error(
         error,
         exc_info=True,
     )
-    msg = "Ocurrió un error inesperado."
+    embed = build_error_embed("Ocurrió un error inesperado.")
     try:
         if interaction.response.is_done():
-            await interaction.followup.send(msg, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         else:
-            await interaction.response.send_message(msg, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
     except Exception as e:
         logger.error("No pude enviar mensaje de error al usuario: %s", e)
 
