@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import discord
+import math
 import yt_dlp
 import random
 import os
@@ -8,10 +9,12 @@ import logging
 import tempfile
 import traceback
 import shutil
+import urllib.parse
 from time import time
 from utils import utils
 from discord.ext import commands, tasks
 from utils.ui import (
+    QueuePaginationView,
     build_added_to_queue_embed,
     build_error_embed,
     build_info_embed,
@@ -20,6 +23,7 @@ from utils.ui import (
     build_search_results_embed,
     build_warning_embed,
     make_music_control_view,
+    COLOR_WARNING,
 )
 
 # Configure logger
@@ -61,6 +65,13 @@ YTDL_OPTIONS = {
         "Cache-Control": "max-age=0",
     },
 }
+
+
+class TrackUnavailableError(Exception):
+    def __init__(self, track_id: str, reason: str):
+        self.track_id = track_id
+        self.reason = reason
+        super().__init__(reason)
 
 
 class SafeYoutubeDL(yt_dlp.YoutubeDL):
@@ -141,6 +152,44 @@ class Music(commands.Cog):
         self.bot = bot
         self.states: dict[int, GuildState] = {}
 
+    @staticmethod
+    def _is_unavailable_error(error_msg: str) -> bool:
+        keywords = [
+            "Music Premium",
+            "Premium",
+            "not available",
+            "unavailable",
+            "Private video",
+            "This video has been removed",
+            "members only",
+        ]
+        lower = error_msg.lower()
+        return any(keyword.lower() in lower for keyword in keywords)
+
+    @staticmethod
+    def _map_unavailable_reason(error_msg: str) -> str:
+        lower = error_msg.lower()
+        if "music premium" in lower or "premium" in lower:
+            return "solo disponible para Premium"
+        if "private video" in lower:
+            return "video privado"
+        if "not available" in lower or "unavailable" in lower:
+            return "no disponible"
+        if "members only" in lower:
+            return "solo para miembros"
+        if "removed" in lower or "this video has been removed" in lower:
+            return "video eliminado"
+        return error_msg[:60]
+
+    @staticmethod
+    def _extract_video_id(url: str) -> str:
+        if "youtube.com/watch?v=" in url:
+            parsed = urllib.parse.urlparse(url)
+            return urllib.parse.parse_qs(parsed.query).get("v", [url])[0]
+        if "youtu.be/" in url:
+            return url.split("youtu.be/")[-1].split("?")[0]
+        return url
+
     async def _extract_info(self, ydl, *args, **kwargs):
         """Run blocking ydl.extract_info in a worker thread, with timeout."""
         try:
@@ -153,6 +202,64 @@ class Music(commands.Cog):
                 f"extract_info timed out after {self.EXTRACT_TIMEOUT_SECONDS}s"
             )
             raise
+
+    async def _extract_track_info(self, ydl_opts: dict, url: str):
+        """Extract metadata for a single URL. Returns the info dict on success,
+        or a TrackUnavailableError/Exception instance as a value on failure."""
+        try:
+            with SafeYoutubeDL(ydl_opts) as ydl:
+                try:
+                    info = await self._extract_info(ydl, url, download=False)
+                    headers = self._extract_http_headers(info, ydl)
+                except yt_dlp.utils.DownloadError as e:
+                    if "Requested format is not available" in str(e):
+                        fallback_opts = ydl_opts.copy()
+                        fallback_opts["format"] = "best"
+                        try:
+                            with SafeYoutubeDL(fallback_opts) as ydl_fb:
+                                info = await self._extract_info(
+                                    ydl_fb, url, download=False
+                                )
+                                headers = self._extract_http_headers(info, ydl_fb)
+                        except yt_dlp.utils.DownloadError as e2:
+                            if self._is_unavailable_error(str(e2)):
+                                reason_raw = str(e2)
+                                mapped_reason = self._map_unavailable_reason(reason_raw)
+                                video_id = self._extract_video_id(url)
+                                return TrackUnavailableError(video_id, mapped_reason)
+                            return e2
+                    elif self._is_unavailable_error(str(e)):
+                        reason_raw = str(e)
+                        mapped_reason = self._map_unavailable_reason(reason_raw)
+                        video_id = self._extract_video_id(url)
+                        return TrackUnavailableError(video_id, mapped_reason)
+                    else:
+                        return e
+                info["_precomputed_headers"] = headers
+                return info
+        except Exception as e:
+            return e
+
+    async def _enqueue_from_info(self, ctx, info: dict, silent: bool = False):
+        """Build a song dict from already-extracted info and append to queue."""
+        url = info["url"]
+        title = info.get("title", "Título no encontrado")
+        headers = info.get("_precomputed_headers")
+        if headers is None:
+            headers = self._extract_http_headers(info, None)
+        song = {
+            "title": title,
+            "url": url,
+            "headers": headers,
+            "thumbnail": info.get("thumbnail"),
+            "duration": info.get("duration"),
+            "webpage_url": info.get("webpage_url"),
+        }
+        self._state(ctx).queue.append(song)
+        if not silent:
+            await ctx.send(
+                embed=build_added_to_queue_embed(song, len(self._state(ctx).queue))
+            )
 
     async def _select_first_playable_candidate(self, ydl, entries):
         """Iterate ytsearch entries and return info for the first candidate
@@ -453,24 +560,97 @@ class Music(commands.Cog):
             return
 
         video_urls = await utils.get_video_urls_from_playlist(playlist_url)
-        logger.debug(f"Video URLs before: {video_urls}")
         if not video_urls:
             await ctx.send(embed=build_error_embed("No se pudo cargar la playlist."))
             return
 
         if shuffle:
             random.shuffle(video_urls)
-            logger.debug(f"Video URLs after shuffle: {video_urls}")
 
-        for url in video_urls:
-            try:
-                await self._play_internal(ctx, url, silent=True)
-            except Exception as e:
-                await ctx.send(embed=build_error_embed("Error al reproducir una canción de la playlist."))
-                logger.error(f"Error reproduciendo playlist: {e}")
+        # FASE 1: parallel extraction with semaphore
+        sem = asyncio.Semaphore(3)
+
+        async def extract_one(url):
+            async with sem:
+                ydl_opts = YTDL_OPTIONS.copy()
+                if not hasattr(self, '_verbose_logged'):
+                    ydl_opts['verbose'] = True
+                    self._verbose_logged = True
+                    logger.info("Enabling verbose yt-dlp logging for first extraction")
+                result = await self._extract_track_info(ydl_opts, url)
+                return (url, result)
+
+        results = await asyncio.gather(*[extract_one(url) for url in video_urls])
+
+        # FASE 2: sequential enqueue (touches shared state)
+        skipped = []
+        other_errors = []
+        added_count = 0
+
+        for url, result in results:
+            if isinstance(result, TrackUnavailableError):
+                skipped.append({"title": result.track_id, "reason": result.reason})
+            elif isinstance(result, Exception):
+                other_errors.append(str(result)[:60])
+                logger.error(f"Error encolando {url}: {result}")
+            else:
+                await self._enqueue_from_info(ctx, result, silent=True)
+                added_count += 1
+
+        if skipped:
+            embed = discord.Embed(
+                title="⚠️ Canciones no añadidas",
+                colour=COLOR_WARNING,
+            )
+            lines = [f"No se agregaron **{len(skipped)}** canciones a la cola:"]
+            reasons = [s["reason"] for s in skipped]
+            if len(set(reasons)) == 1:
+                reason = reasons[0][:40] + ("…" if len(reasons[0]) > 40 else "")
+                lines.append(f"\n{len(skipped)} canciones no disponibles — {reason}")
+            else:
+                for s in skipped[:10]:
+                    title_str = s["title"][:50] + ("…" if len(s["title"]) > 50 else "")
+                    reason_str = s["reason"][:40] + ("…" if len(s["reason"]) > 40 else "")
+                    line = f"• {title_str} — {reason_str}"
+                    if len(line) > 80:
+                        line = line[:79] + "…"
+                    lines.append(line)
+                remaining = len(skipped) - 10
+                if remaining > 0:
+                    lines.append(f"...y {remaining} más")
+            embed.description = "\n".join(lines)
+            await ctx.send(embed=embed)
+
+        if other_errors:
+            embed = discord.Embed(
+                title="⚠️ Errores al procesar playlist",
+                colour=COLOR_WARNING,
+            )
+            lines = ["Se encontraron errores al procesar algunas canciones:"]
+            for err in other_errors[:5]:
+                lines.append(f"• {err[:77]}" if len(err) > 77 else f"• {err}")
+            remaining = len(other_errors) - 5
+            if remaining > 0:
+                lines.append(f"...y {remaining} más")
+            embed.description = "\n".join(lines)
+            await ctx.send(embed=embed)
 
         self.start_inactivity_check(ctx)
-        await ctx.send(embed=build_info_embed("Playlist añadida", "Se agregó la playlist a la cola."))
+        if added_count == 0:
+            await ctx.send(
+                embed=build_warning_embed("No se pudo agregar ninguna canción a la cola.")
+            )
+            return
+
+        await ctx.send(
+            embed=build_info_embed(
+                "Playlist añadida", "Se agregó la playlist a la cola."
+            )
+        )
+
+        if ctx.voice_client and ctx.voice_client.is_connected():
+            if not ctx.voice_client.is_playing():
+                await self.play_next_in_queue(ctx)
 
     def start_inactivity_check(self, ctx):
         """Make sure the per-guild inactivity loop is tracking this guild."""
@@ -568,6 +748,8 @@ class Music(commands.Cog):
                             search = utils.clean_yt_link(search)
                             logger.debug(f"URL limpio: {search}")
                             logger.debug("Extrayendo información del video...")
+                            active_ydl = ydl
+                            precomputed_headers = None
                             try:
                                 info = await self._extract_info(ydl, search, download=False)
                             except yt_dlp.utils.DownloadError as e:
@@ -577,15 +759,49 @@ class Music(commands.Cog):
                                     )
                                     fallback_opts = YTDL_OPTIONS.copy()
                                     fallback_opts["format"] = "best"
-                                    with SafeYoutubeDL(fallback_opts) as ydl_fb:
-                                        info = await self._extract_info(
-                                            ydl_fb, search, download=False
+                                    try:
+                                        with SafeYoutubeDL(fallback_opts) as ydl_fb:
+                                            info = await self._extract_info(
+                                                ydl_fb, search, download=False
+                                            )
+                                            active_ydl = ydl_fb
+                                            precomputed_headers = self._extract_http_headers(
+                                                info, ydl_fb
+                                            )
+                                    except yt_dlp.utils.DownloadError as e2:
+                                        if self._is_unavailable_error(str(e2)):
+                                            reason = self._map_unavailable_reason(str(e2))
+                                            video_id = self._extract_video_id(search)
+                                            if not silent:
+                                                await ctx.send(
+                                                    embed=build_error_embed(
+                                                        f"⏭ Este track no está disponible: {reason}"
+                                                    )
+                                                )
+                                                return
+                                            raise TrackUnavailableError(video_id, reason)
+                                        raise
+                                elif self._is_unavailable_error(str(e)):
+                                    reason_raw = str(e)
+                                    mapped_reason = self._map_unavailable_reason(reason_raw)
+                                    video_id = self._extract_video_id(search)
+                                    if silent:
+                                        logger.warning(f"Track no disponible (silencioso): {mapped_reason}")
+                                        raise TrackUnavailableError(video_id, mapped_reason)
+                                    logger.warning(f"Track no disponible: {mapped_reason}")
+                                    await ctx.send(
+                                        embed=build_error_embed(
+                                            f"⏭ Este track no está disponible: {mapped_reason}"
                                         )
+                                    )
+                                    return
                                 else:
                                     raise
                             url = info["url"]
                             title = info.get("title", "Título no encontrado")
-                            headers = self._extract_http_headers(info, ydl)
+                            headers = precomputed_headers or self._extract_http_headers(
+                                info, active_ydl
+                            )
                             logger.debug(f"Video extraído: {title}")
                         else:
                             logger.debug(f"Buscando en YouTube: {search}")
@@ -645,6 +861,8 @@ class Music(commands.Cog):
             except Exception as e:
                 logger.error(f"Exception en play(): {type(e).__name__}: {e}")
                 logger.error(traceback.format_exc())
+                if silent:
+                    raise
                 await ctx.send(
                     embed=build_error_embed("Ocurrió un error al intentar procesar la canción o playlist.")
                 )
@@ -720,7 +938,14 @@ class Music(commands.Cog):
     async def queue(self, ctx: commands.Context):
         s = self._state(ctx)
         if s.queue:
-            await ctx.send(embed=build_queue_embed(s.queue, s.actual_song))
+            embed = build_queue_embed(s.queue, s.actual_song, page=1)
+            total_pages = max(1, math.ceil(len(s.queue) / 10))
+            if total_pages > 1:
+                view = QueuePaginationView(s.queue, s.actual_song)
+                msg = await ctx.send(embed=embed, view=view)
+                view.message = msg
+            else:
+                await ctx.send(embed=embed)
         else:
             await ctx.send(embed=build_info_embed("📋 Cola de reproducción", "La cola está vacía."))
         self.update_activity(ctx)  # Update activity when viewing queue

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import inspect
 import math
 import re
@@ -152,6 +153,51 @@ def build_search_results_embed(results: list) -> discord.Embed:
     )
 
 
+class QueuePaginationView(discord.ui.View):
+    def __init__(self, queue, now_playing, page_size=10):
+        super().__init__(timeout=120)
+        self.queue = queue
+        self.now_playing = now_playing
+        self.page_size = page_size
+        self.current_page = 1
+        self.message = None
+        self._update_buttons()
+
+    def _update_buttons(self):
+        total_pages = max(1, math.ceil(len(self.queue) / self.page_size))
+        self.current_page = min(self.current_page, total_pages)
+        self.prev_button.disabled = self.current_page == 1
+        self.next_button.disabled = self.current_page >= total_pages
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except Exception:
+                pass
+
+    @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary, custom_id="queue_prev")
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        total_pages = max(1, math.ceil(len(self.queue) / self.page_size))
+        self.current_page = min(self.current_page, total_pages)
+        self.current_page = max(1, self.current_page - 1)
+        self._update_buttons()
+        embed = build_queue_embed(self.queue, self.now_playing, page=self.current_page, page_size=self.page_size)
+        await interaction.response.edit_message(embed=embed, view=self)
+        self.message = interaction.message
+
+    @discord.ui.button(emoji="➡️", style=discord.ButtonStyle.secondary, custom_id="queue_next")
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        total_pages = max(1, math.ceil(len(self.queue) / self.page_size))
+        self.current_page = min(total_pages, self.current_page + 1)
+        self._update_buttons()
+        embed = build_queue_embed(self.queue, self.now_playing, page=self.current_page, page_size=self.page_size)
+        await interaction.response.edit_message(embed=embed, view=self)
+        self.message = interaction.message
+
+
 class MusicControlView(discord.ui.View):
     def __init__(self, bot, music_cog=None):
         super().__init__(timeout=None)
@@ -281,14 +327,23 @@ class MusicControlView(discord.ui.View):
             embed = build_queue_embed(
                 state.queue,
                 now_playing=state.actual_song or "Nada",
+                page=1,
             )
+            total_pages = max(1, math.ceil(len(state.queue) / 10))
+            if total_pages > 1:
+                view = QueuePaginationView(state.queue, state.actual_song or "Nada")
+                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                with contextlib.suppress(discord.HTTPException):
+                    view.message = await interaction.original_response()
+            else:
+                await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
             embed = build_info_embed(
                 "📋 Cola de reproducción",
                 "La cola está vacía.",
             )
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(
         emoji="🔀",
