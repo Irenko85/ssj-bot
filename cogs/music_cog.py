@@ -989,8 +989,15 @@ class Music(commands.Cog):
         s = self._state(ctx)
         if len(s.queue) > 0:
             random.shuffle(s.queue)
-            await ctx.invoke(self.bot.get_command("queue"))
-            self.update_activity(ctx)  # Update activity when shuffling
+            embed = build_queue_embed(s.queue, s.actual_song or "Nada", page=1)
+            total_pages = max(1, math.ceil(len(s.queue) / 10))
+            if total_pages > 1:
+                view = QueuePaginationView(s.queue, s.actual_song or "Nada")
+                msg = await ctx.send(embed=embed, view=view)
+                view.message = msg
+            else:
+                await ctx.send(embed=embed)
+            self.update_activity(ctx)
         else:
             await ctx.send(embed=build_warning_embed("La cola está vacía."))
 
