@@ -206,6 +206,7 @@ class Music(commands.Cog):
     async def _extract_track_info(self, ydl_opts: dict, url: str):
         """Extract metadata for a single URL. Returns the info dict on success,
         or a TrackUnavailableError/Exception instance as a value on failure."""
+        logger.debug(f"[playlist] extrayendo: {url}")
         try:
             with SafeYoutubeDL(ydl_opts) as ydl:
                 try:
@@ -226,18 +227,24 @@ class Music(commands.Cog):
                                 reason_raw = str(e2)
                                 mapped_reason = self._map_unavailable_reason(reason_raw)
                                 video_id = self._extract_video_id(url)
+                                logger.debug(f"[playlist] skip: {url} → {mapped_reason}")
                                 return TrackUnavailableError(video_id, mapped_reason)
+                            logger.debug(f"[playlist] error: {url} → {str(e2)[:80]}")
                             return e2
                     elif self._is_unavailable_error(str(e)):
                         reason_raw = str(e)
                         mapped_reason = self._map_unavailable_reason(reason_raw)
                         video_id = self._extract_video_id(url)
+                        logger.debug(f"[playlist] skip: {url} → {mapped_reason}")
                         return TrackUnavailableError(video_id, mapped_reason)
                     else:
+                        logger.debug(f"[playlist] error: {url} → {str(e)[:80]}")
                         return e
                 info["_precomputed_headers"] = headers
+                logger.debug(f"[playlist] ok: {url} → '{info.get('title', 'sin título')}'")
                 return info
         except Exception as e:
+            logger.debug(f"[playlist] error: {url} → {str(e)[:80]}")
             return e
 
     async def _enqueue_from_info(self, ctx, info: dict, silent: bool = False):
@@ -580,7 +587,10 @@ class Music(commands.Cog):
                 result = await self._extract_track_info(ydl_opts, url)
                 return (url, result)
 
+        logger.info(f"[playlist] iniciando extracción paralela de {len(video_urls)} tracks (semáforo=3)")
         results = await asyncio.gather(*[extract_one(url) for url in video_urls])
+        exitosos = sum(1 for _, r in results if not isinstance(r, Exception))
+        logger.info(f"[playlist] extracción completada: {exitosos}/{len(results)} ok")
 
         # FASE 2: sequential enqueue (touches shared state)
         skipped = []
