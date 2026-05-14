@@ -6,6 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
+import wavelink
 
 from utils.ui import build_error_embed, MusicControlView
 
@@ -50,6 +51,21 @@ class SSJBot(commands.Bot):
         await self.load_extension("cogs.music_cog")
         await self.load_extension("cogs.reminders_cog")
         self.add_view(MusicControlView(bot=self))
+
+        # Conectar a Lavalink en segundo plano
+        asyncio.create_task(self._connect_lavalink())
+
+    async def _connect_lavalink(self):
+        """Conectar nodo Lavalink para reproducción de música."""
+        lavalink_uri = os.getenv("LAVALINK_URI", "http://lavalink:2333")
+        lavalink_password = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
+        node = wavelink.Node(uri=lavalink_uri, password=lavalink_password)
+        try:
+            await wavelink.Pool.connect(nodes=[node], client=self, cache_capacity=100)
+            logger.info("Wavelink: conectado a Lavalink exitosamente")
+        except Exception as e:
+            logger.error(f"Wavelink: no se pudo conectar a Lavalink: {e}")
+            logger.warning("Los comandos de música no estarán disponibles hasta que Lavalink esté activo")
 
 
 # Initialize the bot with a command prefix and intents
