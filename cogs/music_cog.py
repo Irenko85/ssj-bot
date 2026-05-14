@@ -110,9 +110,10 @@ class _FixedPlayer(wavelink.Player):
         try:
             await self.node._update_player(self.guild.id, data=request)
         except Exception:
-            await self.disconnect()
-        else:
             self._connection_event.set()
+            await self.disconnect()
+            return
+        self._connection_event.set()
 
 
 class Music(commands.Cog):
