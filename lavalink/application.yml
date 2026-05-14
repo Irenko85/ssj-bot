@@ -44,6 +44,9 @@ plugins:
       enabled: true
       skipInitialization: false
       refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
+    remoteCipher:
+      url: "https://cipher.kikkia.dev/"
+      userAgent: "ssj-bot"
 
 logging:
   level:
