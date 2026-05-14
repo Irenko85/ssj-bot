@@ -47,9 +47,9 @@ intents = discord.Intents.all()
 
 class SSJBot(commands.Bot):
     async def setup_hook(self):
-        self.add_view(MusicControlView(bot=self))
         await self.load_extension("cogs.music_cog")
         await self.load_extension("cogs.reminders_cog")
+        self.add_view(MusicControlView(bot=self))
 
 
 # Initialize the bot with a command prefix and intents

@@ -230,7 +230,7 @@ class Music(commands.Cog):
             await ctx.send(embed=build_info_embed("✅ Playlist añadida", f"**{tracks.name}** — {len(tracks.tracks)} canciones añadidas a la cola."))
         else:
             track = tracks[0]
-            if player.playing or not player.queue.is_empty:
+            if player.current is not None or player.playing or player.paused or not player.queue.is_empty:
                 await player.queue.put_wait(track)
                 song = _track_to_song(track)
                 await ctx.send(embed=build_added_to_queue_embed(song, player.queue.count))
@@ -378,7 +378,7 @@ class Music(commands.Cog):
             for track in tracks:
                 await player.queue.put_wait(track)
             await ctx.send(embed=build_info_embed("🐉 Dragon Ball Z", f"Añadidas {len(tracks)} canciones."))
-        if not player.playing:
+        if not player.playing and not player.paused:
             next_track = player.queue.get()
             await player.play(next_track)
 
@@ -408,7 +408,7 @@ class Music(commands.Cog):
             for track in tracks:
                 await player.queue.put_wait(track)
             await ctx.send(embed=build_info_embed("🎌 Anime", f"Añadidas {len(tracks)} canciones."))
-        if not player.playing:
+        if not player.playing and not player.paused:
             next_track = player.queue.get()
             await player.play(next_track)
 
@@ -447,7 +447,7 @@ class SearchSelect(discord.ui.Select):
         if player is None:
             await interaction.response.send_message(embed=build_error_embed("No pude conectarme al canal de voz."), ephemeral=True)
             return
-        if player.playing or not player.queue.is_empty:
+        if player.current is not None or player.playing or player.paused or not player.queue.is_empty:
             await player.queue.put_wait(track)
             song = _track_to_song(track)
             await interaction.response.send_message(embed=build_added_to_queue_embed(song, player.queue.count))

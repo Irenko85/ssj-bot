@@ -317,7 +317,9 @@ class MusicControlView(discord.ui.View):
         button: discord.ui.Button,
     ):
         voice_client = interaction.guild.voice_client if interaction.guild else None
-        queue_list = list(voice_client.queue) if voice_client else []
+        queue_tracks = list(voice_client.queue) if voice_client else []
+        # Convert wavelink.Playable objects to dicts compatible with build_queue_embed
+        queue_list = [{"title": t.title if hasattr(t, "title") else str(t)} for t in queue_tracks]
         now_playing = voice_client.current.title if (voice_client and voice_client.current) else "Nada"
 
         if queue_list:
