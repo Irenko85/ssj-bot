@@ -1,4 +1,23 @@
 services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: lavalink
+    restart: unless-stopped
+    environment:
+      - LAVALINK_PASSWORD=${LAVALINK_PASSWORD:-youshallnotpass}
+    volumes:
+      - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+      - ./lavalink/plugins:/opt/Lavalink/plugins
+    networks:
+      - bot-network
+    expose:
+      - "2333"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:2333/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
   ssj-bot:
     build: .
     image: ssj-bot:latest
@@ -8,10 +27,11 @@ services:
       - .env
     environment:
       TZ: America/Santiago
-    # Mount cookies file (optional). Place your cookies.txt under ./cookies/
-    volumes:
-      - ./cookies:/app/cookies:ro
-    # Avoid hijacking the terminal
+    depends_on:
+      lavalink:
+        condition: service_healthy
+    networks:
+      - bot-network
     tty: false
     stdin_open: false
     logging:
@@ -19,3 +39,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  bot-network:
+    driver: bridge
