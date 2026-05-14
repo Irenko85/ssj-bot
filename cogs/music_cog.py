@@ -282,8 +282,8 @@ class Music(commands.Cog):
                 if ctx.interaction:
                     try:
                         await ctx.interaction.delete_original_response()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Could not delete deferred response: {type(e).__name__}: {e}")
 
     @commands.hybrid_command(name="search", description="Busca canciones y muestra resultados para elegir.")
     async def search(self, ctx: commands.Context, *, query: str) -> None:
