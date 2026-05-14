@@ -278,6 +278,12 @@ class Music(commands.Cog):
                 await ctx.send(embed=build_added_to_queue_embed(song, player.queue.count))
             else:
                 await player.play(track)
+                # Completar la respuesta diferida silenciosamente (el embed lo envía on_wavelink_track_start)
+                if ctx.interaction:
+                    try:
+                        await ctx.interaction.delete_original_response()
+                    except Exception:
+                        pass
 
     @commands.hybrid_command(name="search", description="Busca canciones y muestra resultados para elegir.")
     async def search(self, ctx: commands.Context, *, query: str) -> None:
