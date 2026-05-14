@@ -44,6 +44,7 @@ YTDL_OPTIONS = {
     "no_warnings": True,
     "playlist_items": "1",
     "extractor_args": {"youtube": {"player_client": ["web", "ios", "mweb"]}},
+    "js_runtimes": {"node": {}},
     "user_agent": DEFAULT_UA,
     "referer": "https://www.youtube.com/",
     "http_chunk_size": 10485760,
