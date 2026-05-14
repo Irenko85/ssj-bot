@@ -122,6 +122,7 @@ class Music(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self._text_channels: dict[int, discord.TextChannel] = {}
+        self._suppress_now_playing: set[int] = set()
 
     # ── Compatibility shims for MusicControlView ──────────────────────────
 
@@ -193,6 +194,9 @@ class Music(commands.Cog):
     async def on_wavelink_track_start(self, payload: wavelink.TrackStartEventPayload) -> None:
         player = payload.player
         if player is None:
+            return
+        if player.guild.id in self._suppress_now_playing:
+            self._suppress_now_playing.discard(player.guild.id)
             return
         channel = self._get_text_channel(player.guild.id)
         if channel is None:
@@ -277,13 +281,10 @@ class Music(commands.Cog):
                 song = _track_to_song(track)
                 await ctx.send(embed=build_added_to_queue_embed(song, player.queue.count))
             else:
+                self._suppress_now_playing.add(player.guild.id)
                 await player.play(track)
-                # Completar la respuesta diferida silenciosamente (el embed lo envía on_wavelink_track_start)
-                if ctx.interaction:
-                    try:
-                        await ctx.interaction.delete_original_response()
-                    except Exception as e:
-                        logger.warning(f"Could not delete deferred response: {type(e).__name__}: {e}")
+                song = _track_to_song(track)
+                await ctx.send(embed=build_now_playing_embed(song), view=make_music_control_view(self.bot, music_cog=self))
 
     @commands.hybrid_command(name="search", description="Busca canciones y muestra resultados para elegir.")
     async def search(self, ctx: commands.Context, *, query: str) -> None:
