@@ -48,6 +48,8 @@ intents = discord.Intents.all()
 class SSJBot(commands.Bot):
     async def setup_hook(self):
         self.add_view(MusicControlView(bot=self))
+        await self.load_extension("cogs.music_cog")
+        await self.load_extension("cogs.reminders_cog")
 
 
 # Initialize the bot with a command prefix and intents
@@ -151,19 +153,12 @@ async def handle_command_error(ctx, error):
 bot.add_listener(handle_command_error, "on_command_error")
 
 
-async def load_cogs():
-    """Loads all the necessary cogs for the bot."""
-    await bot.load_extension("cogs.music_cog")
-
-
 async def main():
     if not TOKEN:
         logger.error("DISCORD_TOKEN no está configurado en el entorno.")
         sys.exit(1)
 
-    logger.info("Cargando cogs...")
-    await load_cogs()
-    logger.info("Cogs cargados correctamente.")
+    logger.info("Iniciando bot...")
     await bot.start(TOKEN)
 
 
