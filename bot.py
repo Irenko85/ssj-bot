@@ -144,6 +144,15 @@ async def handle_command_error(ctx, error):
     that the prefix is disabled. Sends user-friendly embeds for known
     errors and a generic message for unexpected ones.
     """
+    # Loguear siempre la excepción original para debugging
+    original = getattr(error, "original", error)
+    logger.error(
+        "Error en comando '%s': %s",
+        ctx.command.qualified_name if ctx.command else "?",
+        original,
+        exc_info=original,
+    )
+
     if isinstance(error, commands.CommandNotFound):
         return
 

@@ -74,6 +74,47 @@ class _QueueAdapter:
             self._player.queue.clear()
 
 
+class _FixedPlayer(wavelink.Player):
+    """Wavelink 3.4.1 no envía channelId a Lavalink 4.x. Este parche lo agrega."""
+
+    async def on_voice_state_update(self, data, /) -> None:  # type: ignore[override]
+        channel_id = data["channel_id"]
+        if not channel_id:
+            await self._destroy()
+            return
+        self._connected = True
+        self._voice_state["voice"]["session_id"] = data["session_id"]
+        self._voice_state["voice"]["channel_id"] = channel_id  # guardamos para el PATCH
+        self.channel = self.client.get_channel(int(channel_id))  # type: ignore
+
+    async def _dispatch_voice_update(self) -> None:
+        assert self.guild is not None
+        data = self._voice_state["voice"]
+        session_id = data.get("session_id")
+        token = data.get("token")
+        endpoint = data.get("endpoint")
+        channel_id = data.get("channel_id")
+
+        if not session_id or not token or not endpoint:
+            return
+
+        voice_payload: dict = {
+            "sessionId": session_id,
+            "token": token,
+            "endpoint": endpoint,
+        }
+        if channel_id:
+            voice_payload["channelId"] = str(channel_id)
+
+        request = {"voice": voice_payload}
+        try:
+            await self.node._update_player(self.guild.id, data=request)
+        except Exception:
+            await self.disconnect()
+        else:
+            self._connection_event.set()
+
+
 class Music(commands.Cog):
     """Cog de música usando Wavelink + Lavalink."""
 
@@ -126,7 +167,7 @@ class Music(commands.Cog):
         player: wavelink.Player | None = ctx.voice_client  # type: ignore
         if player is None:
             try:
-                player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+                player = await ctx.author.voice.channel.connect(cls=_FixedPlayer)
             except discord.ClientException:
                 await ctx.send(embed=build_error_embed("No pude conectarme al canal de voz."))
                 return None
