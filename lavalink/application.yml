@@ -34,10 +34,10 @@ plugins:
     allowDirectPlaylistIds: true
     clients:
       - MUSIC
+      - IOS
+      - TVHTML5_SIMPLY_EMBEDDED_PLAYER
+      - ANDROID_MUSIC
       - WEB
-      - WEBEMBEDDED
-      - ANDROID_VR
-      - TVHTML5EMBEDDED
 
 logging:
   level:
