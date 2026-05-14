@@ -13,7 +13,7 @@ services:
     expose:
       - "2333"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:2333/version || wget -q -O- http://localhost:2333/version"]
+      test: ["CMD-SHELL", "curl -sf -H 'Authorization: $${LAVALINK_PASSWORD}' http://localhost:2333/version || wget -q --header='Authorization: $${LAVALINK_PASSWORD}' -O- http://localhost:2333/version"]
       interval: 30s
       timeout: 10s
       retries: 5
