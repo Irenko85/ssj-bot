@@ -39,9 +39,11 @@ plugins:
       - ANDROID_MUSIC
       - WEBEMBEDDED
       - WEB
+      - TV
     oauth:
       enabled: true
-      skipInitialization: true
+      skipInitialization: false
+      refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
 
 logging:
   level:
