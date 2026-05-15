@@ -18,6 +18,7 @@ def make_ctx(guild_id=123, in_voice=True):
     ctx.send = AsyncMock()
     ctx.defer = AsyncMock()
     ctx.voice_client = None
+    ctx.interaction = None
     if in_voice:
         ctx.author.voice = MagicMock()
         ctx.author.voice.channel = MagicMock()
@@ -157,6 +158,41 @@ class TestPlayCommand:
             await cog.play.callback(cog, ctx, query="queued song")
         player.queue.put_wait.assert_called_once_with(track)
         player.play.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_play_edits_original_response_when_deferred_edit_api_fails(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        player = make_player()
+        player.channel = ctx.author.voice.channel
+        ctx.author.voice.channel.connect = AsyncMock(return_value=player)
+
+        original_message = MagicMock()
+        original_message.edit = AsyncMock()
+
+        interaction = MagicMock()
+        interaction.response = MagicMock()
+        interaction.response.is_done = MagicMock(return_value=True)
+        interaction.edit_original_response = AsyncMock(side_effect=RuntimeError("boom"))
+        interaction.original_response = AsyncMock(return_value=original_message)
+        ctx.interaction = interaction
+
+        track = MagicMock(spec=wavelink.Playable)
+        track.title = "Test Song"
+        track.uri = "https://example.com"
+        track.artwork = None
+        track.length = 180000
+        track.author = "Artist"
+
+        with patch.object(Music, "_is_lavalink_available", return_value=True), \
+             patch.object(Music, "_search", new_callable=AsyncMock, return_value=[track]):
+            await cog.play.callback(cog, ctx, query="test song")
+
+        interaction.edit_original_response.assert_awaited_once()
+        interaction.original_response.assert_awaited_once()
+        original_message.edit.assert_awaited_once()
+        ctx.send.assert_not_awaited()
 
 
 class TestSkipCommand:

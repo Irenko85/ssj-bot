@@ -5,6 +5,7 @@ import logging
 import math
 import os
 import random
+from contextlib import suppress
 
 import discord
 import wavelink
@@ -151,6 +152,32 @@ class Music(commands.Cog):
         if ctx.guild:
             self._text_channels[ctx.guild.id] = ctx.channel
 
+    async def _respond(
+        self,
+        ctx: commands.Context,
+        *,
+        embed: discord.Embed,
+        view: discord.ui.View | None = None,
+        ephemeral: bool = False,
+    ):
+        interaction = ctx.interaction
+        if interaction is None:
+            return await ctx.send(embed=embed, view=view)
+
+        if not interaction.response.is_done():
+            return await interaction.response.send_message(embed=embed, view=view, ephemeral=ephemeral)
+
+        try:
+            return await interaction.edit_original_response(embed=embed, view=view)
+        except Exception:
+            logger.exception("No pude editar la respuesta original de la interacción")
+
+        with suppress(Exception):
+            original = await interaction.original_response()
+            return await original.edit(embed=embed, view=view)
+
+        return await interaction.followup.send(embed=embed, view=view, ephemeral=ephemeral, wait=True)
+
     @staticmethod
     def _is_lavalink_available() -> bool:
         try:
@@ -268,41 +295,28 @@ class Music(commands.Cog):
         else:
             tracks = await self._search(query)
         if not tracks:
-            await ctx.send(embed=build_warning_embed("No se encontraron resultados."))
+            await self._respond(ctx, embed=build_warning_embed("No se encontraron resultados."))
             return
         if isinstance(tracks, wavelink.Playlist):
             for track in tracks.tracks:
                 await player.queue.put_wait(track)
-            await ctx.send(embed=build_info_embed("✅ Playlist añadida", f"**{tracks.name}** — {len(tracks.tracks)} canciones añadidas a la cola."))
+            await self._respond(
+                ctx,
+                embed=build_info_embed("✅ Playlist añadida", f"**{tracks.name}** — {len(tracks.tracks)} canciones añadidas a la cola."),
+            )
         else:
             track = tracks[0]
             if player.current is not None or player.playing or player.paused or not player.queue.is_empty:
                 await player.queue.put_wait(track)
                 song = _track_to_song(track)
-                await ctx.send(embed=build_added_to_queue_embed(song, player.queue.count))
+                await self._respond(ctx, embed=build_added_to_queue_embed(song, player.queue.count))
             else:
                 self._suppress_now_playing.add(player.guild.id)
                 await player.play(track)
                 song = _track_to_song(track)
                 embed = build_now_playing_embed(song)
                 view = make_music_control_view(self.bot, music_cog=self)
-                logger.error(f"[PLAY DEBUG] interaction={ctx.interaction} is_done={ctx.interaction.response.is_done() if ctx.interaction else 'N/A'}")
-                try:
-                    if ctx.interaction and not ctx.interaction.response.is_done():
-                        await ctx.interaction.response.send_message(embed=embed, view=view)
-                        logger.error("[PLAY DEBUG] Used send_message")
-                    elif ctx.interaction:
-                        await ctx.interaction.edit_original_response(embed=embed, view=view)
-                        logger.error("[PLAY DEBUG] Used edit_original_response - SUCCESS")
-                    else:
-                        await ctx.send(embed=embed, view=view)
-                        logger.error("[PLAY DEBUG] Used ctx.send (no interaction)")
-                except Exception as e:
-                    logger.error(f"[PLAY DEBUG] EXCEPTION in response: {type(e).__name__}: {e}")
-                    try:
-                        await ctx.send(embed=embed, view=view)
-                    except Exception as e2:
-                        logger.error(f"[PLAY DEBUG] Fallback ctx.send also failed: {e2}")
+                await self._respond(ctx, embed=embed, view=view)
 
     @commands.hybrid_command(name="search", description="Busca canciones y muestra resultados para elegir.")
     async def search(self, ctx: commands.Context, *, query: str) -> None:
@@ -432,19 +446,19 @@ class Music(commands.Cog):
         await ctx.defer()
         tracks: wavelink.Search = await wavelink.Playable.search(DBZ_PLAYLIST_URL)
         if not tracks:
-            await ctx.send(embed=build_error_embed("No se pudo cargar la playlist de DBZ."))
+            await self._respond(ctx, embed=build_error_embed("No se pudo cargar la playlist de DBZ."))
             return
         if isinstance(tracks, wavelink.Playlist):
             track_list = list(tracks.tracks)
             random.shuffle(track_list)
             for track in track_list:
                 await player.queue.put_wait(track)
-            await ctx.send(embed=build_info_embed("🐉 Dragon Ball Z", f"Playlist añadida con {len(track_list)} canciones."))
+            await self._respond(ctx, embed=build_info_embed("🐉 Dragon Ball Z", f"Playlist añadida con {len(track_list)} canciones."))
         else:
             random.shuffle(tracks)
             for track in tracks:
                 await player.queue.put_wait(track)
-            await ctx.send(embed=build_info_embed("🐉 Dragon Ball Z", f"Añadidas {len(tracks)} canciones."))
+            await self._respond(ctx, embed=build_info_embed("🐉 Dragon Ball Z", f"Añadidas {len(tracks)} canciones."))
         if not player.playing and not player.paused:
             next_track = player.queue.get()
             await player.play(next_track)
@@ -462,19 +476,19 @@ class Music(commands.Cog):
         await ctx.defer()
         tracks: wavelink.Search = await wavelink.Playable.search(ANIME_PLAYLIST_URL)
         if not tracks:
-            await ctx.send(embed=build_error_embed("No se pudo cargar la playlist de Anime."))
+            await self._respond(ctx, embed=build_error_embed("No se pudo cargar la playlist de Anime."))
             return
         if isinstance(tracks, wavelink.Playlist):
             track_list = list(tracks.tracks)
             random.shuffle(track_list)
             for track in track_list:
                 await player.queue.put_wait(track)
-            await ctx.send(embed=build_info_embed("🎌 Anime", f"Playlist añadida con {len(track_list)} canciones."))
+            await self._respond(ctx, embed=build_info_embed("🎌 Anime", f"Playlist añadida con {len(track_list)} canciones."))
         else:
             random.shuffle(tracks)
             for track in tracks:
                 await player.queue.put_wait(track)
-            await ctx.send(embed=build_info_embed("🎌 Anime", f"Añadidas {len(tracks)} canciones."))
+            await self._respond(ctx, embed=build_info_embed("🎌 Anime", f"Añadidas {len(tracks)} canciones."))
         if not player.playing and not player.paused:
             next_track = player.queue.get()
             await player.play(next_track)
