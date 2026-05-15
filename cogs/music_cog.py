@@ -286,12 +286,23 @@ class Music(commands.Cog):
                 song = _track_to_song(track)
                 embed = build_now_playing_embed(song)
                 view = make_music_control_view(self.bot, music_cog=self)
-                if ctx.interaction and not ctx.interaction.response.is_done():
-                    await ctx.interaction.response.send_message(embed=embed, view=view)
-                elif ctx.interaction:
-                    await ctx.interaction.edit_original_response(embed=embed, view=view)
-                else:
-                    await ctx.send(embed=embed, view=view)
+                logger.error(f"[PLAY DEBUG] interaction={ctx.interaction} is_done={ctx.interaction.response.is_done() if ctx.interaction else 'N/A'}")
+                try:
+                    if ctx.interaction and not ctx.interaction.response.is_done():
+                        await ctx.interaction.response.send_message(embed=embed, view=view)
+                        logger.error("[PLAY DEBUG] Used send_message")
+                    elif ctx.interaction:
+                        await ctx.interaction.edit_original_response(embed=embed, view=view)
+                        logger.error("[PLAY DEBUG] Used edit_original_response - SUCCESS")
+                    else:
+                        await ctx.send(embed=embed, view=view)
+                        logger.error("[PLAY DEBUG] Used ctx.send (no interaction)")
+                except Exception as e:
+                    logger.error(f"[PLAY DEBUG] EXCEPTION in response: {type(e).__name__}: {e}")
+                    try:
+                        await ctx.send(embed=embed, view=view)
+                    except Exception as e2:
+                        logger.error(f"[PLAY DEBUG] Fallback ctx.send also failed: {e2}")
 
     @commands.hybrid_command(name="search", description="Busca canciones y muestra resultados para elegir.")
     async def search(self, ctx: commands.Context, *, query: str) -> None:
