@@ -1,0 +1,54 @@
+server:
+  port: 2333
+  address: 0.0.0.0
+
+lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
+      repository: "https://maven.lavalink.dev/releases"
+  server:
+    password: "${LAVALINK_PASSWORD:youshallnotpass}"
+    sources:
+      youtube: false
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: false
+    filters:
+      volume: true
+      equalizer: true
+      timescale: true
+      rotation: true
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+    clients:
+      - MUSIC
+      - TVHTML5_SIMPLY
+      - ANDROID_VR
+      - ANDROID_MUSIC
+      - WEBEMBEDDED
+      - WEB
+      - TV
+    oauth:
+      enabled: true
+      skipInitialization: false
+      refreshToken: "${YOUTUBE_REFRESH_TOKEN:}"
+    remoteCipher:
+      url: "https://cipher.kikkia.dev/"
+      userAgent: "ssj-bot"
+
+logging:
+  level:
+    root: INFO
+    lavalink: INFO

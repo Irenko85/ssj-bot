@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import inspect
 import math
 import re
 import discord
@@ -222,12 +221,12 @@ class MusicControlView(discord.ui.View):
             )
             return
 
-        if voice_client.is_paused():
-            voice_client.resume()
+        if voice_client.paused:
+            await voice_client.pause(False)
             paused = False
             message = "Se reanudó la reproducción."
-        elif voice_client.is_playing():
-            voice_client.pause()
+        elif voice_client.playing:
+            await voice_client.pause(True)
             paused = True
             message = "Se pausó la reproducción."
         else:
@@ -256,14 +255,14 @@ class MusicControlView(discord.ui.View):
         button: discord.ui.Button,
     ):
         voice_client = interaction.guild.voice_client if interaction.guild else None
-        if not voice_client or not voice_client.is_playing():
+        if not voice_client or not voice_client.playing:
             await interaction.response.send_message(
                 embed=build_error_embed("No hay nada que skipear."),
                 ephemeral=True,
             )
             return
 
-        voice_client.stop()
+        await voice_client.skip()
         self.music_cog.update_activity(interaction.guild)
         await interaction.response.send_message(
             embed=build_info_embed("Control de reproducción", "Se skipeó la canción actual."),
@@ -288,15 +287,11 @@ class MusicControlView(discord.ui.View):
             )
             return
 
-        state = self.music_cog._state(interaction.guild)
-        state.queue.clear()
+        voice_client.queue.clear()
 
-        if voice_client.is_playing() or voice_client.is_paused():
-            voice_client.stop()
-        if voice_client.is_connected():
-            result = voice_client.disconnect()
-            if inspect.isawaitable(result):
-                await result
+        if voice_client.playing or voice_client.paused:
+            await voice_client.stop()
+        await voice_client.disconnect()
 
         fresh_view = make_music_control_view(self.bot, music_cog=self.music_cog, disabled=True)
         await interaction.message.edit(
@@ -321,17 +316,21 @@ class MusicControlView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        state = self.music_cog._state(interaction.guild)
+        voice_client = interaction.guild.voice_client if interaction.guild else None
+        queue_tracks = list(voice_client.queue) if voice_client else []
+        # Convert wavelink.Playable objects to dicts compatible with build_queue_embed
+        queue_list = [{"title": t.title if hasattr(t, "title") else str(t)} for t in queue_tracks]
+        now_playing = voice_client.current.title if (voice_client and voice_client.current) else "Nada"
 
-        if state.queue:
+        if queue_list:
             embed = build_queue_embed(
-                state.queue,
-                now_playing=state.actual_song or "Nada",
+                queue_list,
+                now_playing=now_playing,
                 page=1,
             )
-            total_pages = max(1, math.ceil(len(state.queue) / 10))
+            total_pages = max(1, math.ceil(len(queue_list) / 10))
             if total_pages > 1:
-                view = QueuePaginationView(state.queue, state.actual_song or "Nada")
+                view = QueuePaginationView(queue_list, now_playing)
                 await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
                 with contextlib.suppress(discord.HTTPException):
                     view.message = await interaction.original_response()
@@ -355,16 +354,16 @@ class MusicControlView(discord.ui.View):
         interaction: discord.Interaction,
         button: discord.ui.Button,
     ):
-        state = self.music_cog._state(interaction.guild)
-        if len(state.queue) < 2:
+        voice_client = interaction.guild.voice_client if interaction.guild else None
+        queue_count = voice_client.queue.count if voice_client else 0
+        if queue_count < 2:
             await interaction.response.send_message(
                 embed=build_warning_embed("No hay canciones suficientes en la cola para mezclar."),
                 ephemeral=True,
             )
             return
 
-        import random
-        random.shuffle(state.queue)
+        voice_client.queue.shuffle()
         self.music_cog.update_activity(interaction.guild)
         await interaction.response.send_message(
             embed=build_info_embed("🔀 Shuffle", "La cola fue mezclada."),

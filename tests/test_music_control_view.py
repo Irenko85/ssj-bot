@@ -11,6 +11,17 @@ def make_interaction():
     interaction = MagicMock()
     interaction.guild = MagicMock()
     interaction.guild.voice_client = MagicMock()
+    interaction.guild.voice_client.playing = False
+    interaction.guild.voice_client.paused = False
+    interaction.guild.voice_client.pause = AsyncMock()
+    interaction.guild.voice_client.skip = AsyncMock()
+    interaction.guild.voice_client.stop = AsyncMock()
+    interaction.guild.voice_client.disconnect = AsyncMock()
+    interaction.guild.voice_client.queue = MagicMock()
+    interaction.guild.voice_client.queue.count = 0
+    interaction.guild.voice_client.queue.clear = MagicMock()
+    interaction.guild.voice_client.queue.shuffle = MagicMock()
+    interaction.guild.voice_client.current = None
     interaction.response = MagicMock()
     interaction.response.send_message = AsyncMock()
     interaction.followup = MagicMock()
@@ -72,13 +83,13 @@ async def test_pause_resume_button_pauses_and_edits_message_with_fresh_view():
     bot_mock = make_bot()
     view = MusicControlView(bot=bot_mock)
     interaction = make_interaction()
-    interaction.guild.voice_client.is_paused.return_value = False
-    interaction.guild.voice_client.is_playing.return_value = True
+    interaction.guild.voice_client.paused = False
+    interaction.guild.voice_client.playing = True
 
     button = next(child for child in view.children if child.custom_id == "pause_resume")
     await button.callback(interaction)
 
-    interaction.guild.voice_client.pause.assert_called_once()
+    interaction.guild.voice_client.pause.assert_called_once_with(True)
     # Singleton must NOT be mutated
     assert str(button.emoji) == "⏸"
     interaction.message.edit.assert_awaited_once()
@@ -99,12 +110,12 @@ async def test_skip_button_skips_and_updates_activity():
     bot_mock = make_bot()
     view = MusicControlView(bot=bot_mock)
     interaction = make_interaction()
-    interaction.guild.voice_client.is_playing.return_value = True
+    interaction.guild.voice_client.playing = True
 
     button = next(child for child in view.children if child.custom_id == "skip")
     await button.callback(interaction)
 
-    interaction.guild.voice_client.stop.assert_called_once()
+    interaction.guild.voice_client.skip.assert_awaited_once()
     interaction.response.send_message.assert_awaited_once()
     bot_mock.get_cog.return_value.update_activity.assert_called_once_with(interaction.guild)
 
@@ -114,9 +125,7 @@ async def test_stop_button_disables_all_buttons_and_edits_message():
     bot_mock = make_bot()
     view = MusicControlView(bot=bot_mock)
     interaction = make_interaction()
-    interaction.guild.voice_client.is_connected.return_value = True
-    interaction.guild.voice_client.is_playing.return_value = True
-    interaction.guild.voice_client.disconnect = AsyncMock()
+    interaction.guild.voice_client.playing = True
 
     button = next(child for child in view.children if child.custom_id == "stop")
     await button.callback(interaction)
@@ -124,6 +133,7 @@ async def test_stop_button_disables_all_buttons_and_edits_message():
     # Singleton must NOT be mutated
     assert not any(child.disabled for child in view.children)
     interaction.message.edit.assert_awaited_once()
+    interaction.guild.voice_client.stop.assert_awaited_once()
     interaction.guild.voice_client.disconnect.assert_awaited_once()
     bot_mock.get_cog.return_value._cleanup_state.assert_called_once_with(interaction.guild.id)
 
@@ -150,9 +160,9 @@ async def test_view_queue_button_sends_ephemeral_embed():
 @pytest.mark.asyncio
 async def test_shuffle_button_warns_when_queue_has_zero_items():
     bot_mock = make_bot()
-    bot_mock.get_cog.return_value._state.return_value = MagicMock(queue=[])
     view = MusicControlView(bot=bot_mock)
     interaction = make_interaction()
+    interaction.guild.voice_client.queue.count = 0
 
     button = next(child for child in view.children if child.custom_id == "shuffle")
     await button.callback(interaction)
@@ -166,9 +176,9 @@ async def test_shuffle_button_warns_when_queue_has_zero_items():
 @pytest.mark.asyncio
 async def test_shuffle_button_warns_when_queue_has_one_item():
     bot_mock = make_bot()
-    bot_mock.get_cog.return_value._state.return_value = MagicMock(queue=[{"title": "Song 1"}])
     view = MusicControlView(bot=bot_mock)
     interaction = make_interaction()
+    interaction.guild.voice_client.queue.count = 1
 
     button = next(child for child in view.children if child.custom_id == "shuffle")
     await button.callback(interaction)
@@ -182,16 +192,14 @@ async def test_shuffle_button_warns_when_queue_has_one_item():
 @pytest.mark.asyncio
 async def test_shuffle_button_shuffles_queue_with_two_or_more_items():
     bot_mock = make_bot()
-    queue = [{"title": "Song 1"}, {"title": "Song 2"}, {"title": "Song 3"}]
-    bot_mock.get_cog.return_value._state.return_value = MagicMock(queue=queue)
     view = MusicControlView(bot=bot_mock)
     interaction = make_interaction()
+    interaction.guild.voice_client.queue.count = 3
 
-    with patch("random.shuffle") as mock_shuffle:
-        button = next(child for child in view.children if child.custom_id == "shuffle")
-        await button.callback(interaction)
+    button = next(child for child in view.children if child.custom_id == "shuffle")
+    await button.callback(interaction)
 
-    mock_shuffle.assert_called_once_with(queue)
+    interaction.guild.voice_client.queue.shuffle.assert_called_once()
     bot_mock.get_cog.return_value.update_activity.assert_called_once_with(interaction.guild)
     interaction.response.send_message.assert_awaited_once()
     _, kwargs = interaction.response.send_message.call_args
@@ -205,13 +213,13 @@ async def test_button_callbacks_work_without_ctx():
     view = MusicControlView(bot=bot_mock)
 
     interaction = make_interaction()
-    interaction.guild.voice_client.is_paused.return_value = False
-    interaction.guild.voice_client.is_playing.return_value = True
+    interaction.guild.voice_client.paused = False
+    interaction.guild.voice_client.playing = True
 
     button = next(child for child in view.children if child.custom_id == "pause_resume")
     await button.callback(interaction)
 
-    interaction.guild.voice_client.pause.assert_called_once()
+    interaction.guild.voice_client.pause.assert_called_once_with(True)
     bot_mock.get_cog.return_value.update_activity.assert_called_once_with(interaction.guild)
 
 
