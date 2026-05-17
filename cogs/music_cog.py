@@ -126,6 +126,7 @@ class Music(commands.Cog):
         self._text_channels: dict[int, discord.TextChannel] = {}
         self._now_playing_messages: dict[int, discord.Message] = {}
         self._now_playing_locks: dict[int, asyncio.Lock] = {}
+        self._np_just_published: set[int] = set()
 
     # ── Compatibility shims for MusicControlView ──────────────────────────
 
@@ -142,6 +143,7 @@ class Music(commands.Cog):
         self._text_channels.pop(guild_id, None)
         getattr(self, "_now_playing_messages", {}).pop(guild_id, None)
         getattr(self, "_now_playing_locks", {}).pop(guild_id, None)
+        getattr(self, "_np_just_published", set()).discard(guild_id)
 
     def update_activity(self, ctx_or_guild) -> None:
         """Compatibility shim for MusicControlView. No-op in wavelink."""
@@ -180,6 +182,9 @@ class Music(commands.Cog):
             view = make_music_control_view(self.bot, music_cog=self)
             new_msg = await channel.send(embed=embed, view=view)
             self._now_playing_messages[guild_id] = new_msg
+            # NOTE: NO agregamos guild_id a _np_just_published aquí
+            # porque este método también es llamado por on_wavelink_track_start
+            # y por cog_after_invoke. Cada caller gestiona el flag según corresponda.
 
     async def _respond(
         self,
@@ -240,6 +245,29 @@ class Music(commands.Cog):
             return False
         return True
 
+    async def cog_after_invoke(self, ctx: commands.Context) -> None:
+        """Re-publica el now-playing al fondo del canal después de cada comando."""
+        if ctx.guild is None:
+            return
+
+        # Issue 2: skip ya gatilla on_wavelink_track_start, no republicar el track viejo
+        if ctx.command and ctx.command.name == "skip":
+            self._np_just_published.discard(ctx.guild.id)  # limpiar flag stale
+            return
+
+        # Issue 1: si el comando ya publicó (play path inmediato, nowplaying), no duplicar
+        if ctx.guild.id in self._np_just_published:
+            self._np_just_published.discard(ctx.guild.id)
+            return
+
+        player: wavelink.Player | None = ctx.voice_client  # type: ignore
+        if player is None or player.current is None:
+            return
+        channel = ctx.channel
+        self._text_channels[ctx.guild.id] = channel  # sync active channel
+        song = _track_to_song(player.current)
+        await self._publish_now_playing(channel, song)
+
     # ── Wavelink events ────────────────────────────────────────────────────
 
     @commands.Cog.listener()
@@ -289,6 +317,7 @@ class Music(commands.Cog):
         self._text_channels.pop(player.guild.id, None)
         getattr(self, "_now_playing_messages", {}).pop(player.guild.id, None)
         getattr(self, "_now_playing_locks", {}).pop(player.guild.id, None)
+        getattr(self, "_np_just_published", set()).discard(player.guild.id)
 
     # ── Search helper ────────────────────────────────────────────────────────
 
@@ -339,6 +368,7 @@ class Music(commands.Cog):
             else:
                 await player.play(track)
                 song = _track_to_song(track)
+                self._np_just_published.add(ctx.guild.id)
                 await self._publish_now_playing(ctx.channel, song)
                 if ctx.interaction:
                     try:
@@ -384,6 +414,7 @@ class Music(commands.Cog):
         self._text_channels.pop(ctx.guild.id, None)
         getattr(self, "_now_playing_messages", {}).pop(ctx.guild.id, None)
         getattr(self, "_now_playing_locks", {}).pop(ctx.guild.id, None)
+        getattr(self, "_np_just_published", set()).discard(ctx.guild.id)
         await ctx.send(embed=build_info_embed("⏹ Detenido", "Reproducción detenida y cola vaciada."))
 
     @commands.hybrid_command(name="pause", description="Pausa la reproducción.")
@@ -424,6 +455,7 @@ class Music(commands.Cog):
             await ctx.send(embed=build_warning_embed("No hay nada reproduciéndose."))
             return
         song = _track_to_song(player.current)
+        self._np_just_published.add(ctx.guild.id)
         await self._publish_now_playing(ctx.channel, song)
 
     @commands.hybrid_command(name="shuffle", description="Mezcla la cola de reproducción.")
