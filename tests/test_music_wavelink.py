@@ -381,3 +381,201 @@ class TestPublishNowPlaying:
 
         assert 456 in cog._now_playing_locks
         assert isinstance(cog._now_playing_locks[456], asyncio.Lock)
+
+    @pytest.mark.asyncio
+    async def test_publish_now_playing_does_not_mark_guild_as_just_published(self):
+        bot = make_bot()
+        cog = Music(bot)
+        channel = MagicMock()
+        channel.guild = MagicMock()
+        channel.guild.id = 123
+        channel.send = AsyncMock(return_value=MagicMock())
+        song = {"title": "Song", "url": "https://example.com"}
+
+        with patch("cogs.music_cog.build_now_playing_embed", return_value=MagicMock()), \
+             patch("cogs.music_cog.make_music_control_view", return_value=MagicMock()):
+            await cog._publish_now_playing(channel, song)
+
+        assert 123 not in cog._np_just_published
+
+
+class TestCogAfterInvoke:
+    @pytest.mark.asyncio
+    async def test_after_invoke_publishes_when_song_playing(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        player = make_player()
+        track = MagicMock(spec=wavelink.Playable)
+        track.title = "Playing Song"
+        track.uri = "https://example.com"
+        track.artwork = None
+        track.length = 180000
+        track.author = "Artist"
+        player.current = track
+        ctx.voice_client = player
+
+        with patch.object(cog, "_publish_now_playing", new_callable=AsyncMock) as mock_publish:
+            await cog.cog_after_invoke(ctx)
+
+        mock_publish.assert_awaited_once()
+        args = mock_publish.await_args
+        assert args[0][0] is ctx.channel
+        assert args[0][1]["title"] == "Playing Song"
+
+    @pytest.mark.asyncio
+    async def test_after_invoke_skips_when_no_guild(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        ctx.guild = None
+
+        with patch.object(cog, "_publish_now_playing", new_callable=AsyncMock) as mock_publish:
+            await cog.cog_after_invoke(ctx)
+
+        mock_publish.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_after_invoke_skips_when_no_player(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        ctx.voice_client = None
+
+        with patch.object(cog, "_publish_now_playing", new_callable=AsyncMock) as mock_publish:
+            await cog.cog_after_invoke(ctx)
+
+        mock_publish.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_after_invoke_skips_when_nothing_playing(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        player = make_player()
+        player.current = None
+        ctx.voice_client = player
+
+        with patch.object(cog, "_publish_now_playing", new_callable=AsyncMock) as mock_publish:
+            await cog.cog_after_invoke(ctx)
+
+        mock_publish.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_after_invoke_syncs_text_channel(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        player = make_player()
+        track = MagicMock(spec=wavelink.Playable)
+        track.title = "Playing Song"
+        track.uri = "https://example.com"
+        track.artwork = None
+        track.length = 180000
+        track.author = "Artist"
+        player.current = track
+        ctx.voice_client = player
+
+        with patch.object(cog, "_publish_now_playing", new_callable=AsyncMock):
+            await cog.cog_after_invoke(ctx)
+
+        assert cog._text_channels.get(ctx.guild.id) is ctx.channel
+
+    @pytest.mark.asyncio
+    async def test_after_invoke_skips_on_skip_command(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        ctx.command.name = "skip"
+        player = make_player()
+        track = MagicMock(spec=wavelink.Playable)
+        track.title = "Playing Song"
+        track.uri = "https://example.com"
+        track.artwork = None
+        track.length = 180000
+        track.author = "Artist"
+        player.current = track
+        ctx.voice_client = player
+
+        with patch.object(cog, "_publish_now_playing", new_callable=AsyncMock) as mock_publish:
+            await cog.cog_after_invoke(ctx)
+
+        mock_publish.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_after_invoke_skips_if_just_published(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        guild_id = ctx.guild.id
+        cog._np_just_published.add(guild_id)
+        player = make_player()
+        track = MagicMock(spec=wavelink.Playable)
+        track.title = "Playing Song"
+        track.uri = "https://example.com"
+        track.artwork = None
+        track.length = 180000
+        track.author = "Artist"
+        player.current = track
+        ctx.voice_client = player
+
+        with patch.object(cog, "_publish_now_playing", new_callable=AsyncMock) as mock_publish:
+            await cog.cog_after_invoke(ctx)
+
+        mock_publish.assert_not_awaited()
+        assert guild_id not in cog._np_just_published
+
+    @pytest.mark.asyncio
+    async def test_after_invoke_republishes_on_consecutive_commands(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        player = make_player()
+        track = MagicMock(spec=wavelink.Playable)
+        track.title = "Playing Song"
+        track.uri = "https://example.com"
+        track.artwork = None
+        track.length = 180000
+        track.author = "Artist"
+        player.current = track
+        ctx.voice_client = player
+
+        with patch.object(cog, "_publish_now_playing", new_callable=AsyncMock) as mock_publish:
+            await cog.cog_after_invoke(ctx)
+            await cog.cog_after_invoke(ctx)
+
+        assert mock_publish.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_after_invoke_republishes_after_track_start(self):
+        bot = make_bot()
+        cog = Music(bot)
+        channel = MagicMock()
+        cog._text_channels[123] = channel
+
+        payload = MagicMock()
+        payload.player = MagicMock()
+        payload.player.guild.id = 123
+        payload.track = MagicMock(spec=wavelink.Playable)
+        payload.track.title = "Track Song"
+        payload.track.uri = "https://example.com/track"
+        payload.track.artwork = None
+        payload.track.length = 180000
+        payload.track.author = "Artist"
+
+        ctx = make_ctx()
+        player = make_player()
+        track = MagicMock(spec=wavelink.Playable)
+        track.title = "Playing Song"
+        track.uri = "https://example.com/song"
+        track.artwork = None
+        track.length = 180000
+        track.author = "Artist"
+        player.current = track
+        ctx.voice_client = player
+
+        with patch.object(cog, "_publish_now_playing", new_callable=AsyncMock) as mock_publish:
+            await cog.on_wavelink_track_start(payload)
+            await cog.cog_after_invoke(ctx)
+
+        assert mock_publish.call_count == 2
