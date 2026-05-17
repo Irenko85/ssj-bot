@@ -1,6 +1,7 @@
 """Music cog — Wavelink 3.x + Lavalink 4."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import os
@@ -123,7 +124,8 @@ class Music(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self._text_channels: dict[int, discord.TextChannel] = {}
-        self._suppress_now_playing: set[int] = set()
+        self._now_playing_messages: dict[int, discord.Message] = {}
+        self._now_playing_locks: dict[int, asyncio.Lock] = {}
 
     # ── Compatibility shims for MusicControlView ──────────────────────────
 
@@ -138,6 +140,8 @@ class Music(commands.Cog):
     def _cleanup_state(self, guild_id: int) -> None:
         """Compatibility shim for MusicControlView."""
         self._text_channels.pop(guild_id, None)
+        getattr(self, "_now_playing_messages", {}).pop(guild_id, None)
+        getattr(self, "_now_playing_locks", {}).pop(guild_id, None)
 
     def update_activity(self, ctx_or_guild) -> None:
         """Compatibility shim for MusicControlView. No-op in wavelink."""
@@ -151,6 +155,31 @@ class Music(commands.Cog):
     def _set_text_channel(self, ctx: commands.Context) -> None:
         if ctx.guild:
             self._text_channels[ctx.guild.id] = ctx.channel
+
+    def _get_np_lock(self, guild_id: int) -> asyncio.Lock:
+        if guild_id not in self._now_playing_locks:
+            self._now_playing_locks[guild_id] = asyncio.Lock()
+        return self._now_playing_locks[guild_id]
+
+    async def _publish_now_playing(self, channel: discord.TextChannel, song: dict) -> None:
+        """Publica o actualiza el mensaje de now-playing en el canal, asegurando solo uno visible."""
+        guild_id = channel.guild.id
+        lock = self._get_np_lock(guild_id)
+        async with lock:
+            old_msg = self._now_playing_messages.get(guild_id)
+            if old_msg is not None:
+                try:
+                    await old_msg.delete()
+                except discord.NotFound:
+                    pass
+                except discord.HTTPException:
+                    logger.warning("No se pudo borrar el NP anterior para guild %s; se omite envío", guild_id)
+                    self._now_playing_messages.pop(guild_id, None)
+                    return
+            embed = build_now_playing_embed(song)
+            view = make_music_control_view(self.bot, music_cog=self)
+            new_msg = await channel.send(embed=embed, view=view)
+            self._now_playing_messages[guild_id] = new_msg
 
     async def _respond(
         self,
@@ -222,16 +251,11 @@ class Music(commands.Cog):
         player = payload.player
         if player is None:
             return
-        if player.guild.id in self._suppress_now_playing:
-            self._suppress_now_playing.discard(player.guild.id)
-            return
         channel = self._get_text_channel(player.guild.id)
         if channel is None:
             return
         song = _track_to_song(payload.track)
-        embed = build_now_playing_embed(song)
-        view = make_music_control_view(self.bot, music_cog=self)
-        await channel.send(embed=embed, view=view)
+        await self._publish_now_playing(channel, song)
 
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload) -> None:
@@ -263,6 +287,8 @@ class Music(commands.Cog):
             await channel.send(embed=build_info_embed("Desconectado", "Sin actividad por inactividad."))
         await player.disconnect()
         self._text_channels.pop(player.guild.id, None)
+        getattr(self, "_now_playing_messages", {}).pop(player.guild.id, None)
+        getattr(self, "_now_playing_locks", {}).pop(player.guild.id, None)
 
     # ── Search helper ────────────────────────────────────────────────────────
 
@@ -311,12 +337,14 @@ class Music(commands.Cog):
                 song = _track_to_song(track)
                 await self._respond(ctx, embed=build_added_to_queue_embed(song, player.queue.count))
             else:
-                self._suppress_now_playing.add(player.guild.id)
                 await player.play(track)
                 song = _track_to_song(track)
-                embed = build_now_playing_embed(song)
-                view = make_music_control_view(self.bot, music_cog=self)
-                await self._respond(ctx, embed=embed, view=view)
+                await self._publish_now_playing(ctx.channel, song)
+                if ctx.interaction:
+                    try:
+                        await ctx.interaction.delete_original_response()
+                    except (discord.NotFound, discord.HTTPException, TypeError):
+                        pass
 
     @commands.hybrid_command(name="search", description="Busca canciones y muestra resultados para elegir.")
     async def search(self, ctx: commands.Context, *, query: str) -> None:
@@ -354,6 +382,8 @@ class Music(commands.Cog):
         await player.stop()
         await player.disconnect()
         self._text_channels.pop(ctx.guild.id, None)
+        getattr(self, "_now_playing_messages", {}).pop(ctx.guild.id, None)
+        getattr(self, "_now_playing_locks", {}).pop(ctx.guild.id, None)
         await ctx.send(embed=build_info_embed("⏹ Detenido", "Reproducción detenida y cola vaciada."))
 
     @commands.hybrid_command(name="pause", description="Pausa la reproducción.")
@@ -394,9 +424,7 @@ class Music(commands.Cog):
             await ctx.send(embed=build_warning_embed("No hay nada reproduciéndose."))
             return
         song = _track_to_song(player.current)
-        embed = build_now_playing_embed(song)
-        view = make_music_control_view(self.bot, music_cog=self)
-        await ctx.send(embed=embed, view=view)
+        await self._publish_now_playing(ctx.channel, song)
 
     @commands.hybrid_command(name="shuffle", description="Mezcla la cola de reproducción.")
     async def shuffle(self, ctx: commands.Context) -> None:

@@ -1,4 +1,7 @@
 """Tests para el Music cog con Wavelink."""
+import asyncio
+
+import discord
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import wavelink
@@ -15,6 +18,7 @@ def make_ctx(guild_id=123, in_voice=True):
     ctx.guild = MagicMock()
     ctx.guild.id = guild_id
     ctx.channel = MagicMock()
+    ctx.channel.send = AsyncMock()
     ctx.send = AsyncMock()
     ctx.defer = AsyncMock()
     ctx.voice_client = None
@@ -135,6 +139,7 @@ class TestPlayCommand:
              patch.object(Music, "_search", new_callable=AsyncMock, return_value=[track]):
             await cog.play.callback(cog, ctx, query="test song")
         player.play.assert_called_once_with(track)
+        ctx.channel.send.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_play_queues_when_already_playing(self):
@@ -160,7 +165,7 @@ class TestPlayCommand:
         player.play.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_play_edits_original_response_when_deferred_edit_api_fails(self):
+    async def test_play_immediate_publishes_to_channel(self):
         bot = make_bot()
         cog = Music(bot)
         ctx = make_ctx()
@@ -189,10 +194,7 @@ class TestPlayCommand:
              patch.object(Music, "_search", new_callable=AsyncMock, return_value=[track]):
             await cog.play.callback(cog, ctx, query="test song")
 
-        interaction.edit_original_response.assert_awaited_once()
-        interaction.original_response.assert_awaited_once()
-        original_message.edit.assert_awaited_once()
-        ctx.send.assert_not_awaited()
+        ctx.channel.send.assert_awaited_once()
 
 
 class TestSkipCommand:
@@ -277,3 +279,105 @@ class TestSoundCloudFallback:
         with patch("wavelink.Playable.search", side_effect=mock_search):
             result = await Music._search("test query")
         assert result is None
+
+
+class TestPublishNowPlaying:
+    @pytest.mark.asyncio
+    async def test_publish_sends_new_message_when_no_previous(self):
+        bot = make_bot()
+        cog = Music(bot)
+        channel = MagicMock()
+        channel.guild = MagicMock()
+        channel.guild.id = 123
+        channel.send = AsyncMock(return_value=MagicMock())
+        song = {"title": "Song", "url": "https://example.com"}
+
+        with patch("cogs.music_cog.build_now_playing_embed", return_value=MagicMock()), \
+             patch("cogs.music_cog.make_music_control_view", return_value=MagicMock()):
+            await cog._publish_now_playing(channel, song)
+
+        channel.send.assert_awaited_once()
+        assert 123 in cog._now_playing_messages
+        assert cog._now_playing_messages[123] is channel.send.return_value
+
+    @pytest.mark.asyncio
+    async def test_publish_deletes_previous_message(self):
+        bot = make_bot()
+        cog = Music(bot)
+        old_msg = MagicMock()
+        old_msg.delete = AsyncMock()
+        cog._now_playing_messages[123] = old_msg
+
+        channel = MagicMock()
+        channel.guild = MagicMock()
+        channel.guild.id = 123
+        channel.send = AsyncMock(return_value=MagicMock())
+        song = {"title": "Song", "url": "https://example.com"}
+
+        with patch("cogs.music_cog.build_now_playing_embed", return_value=MagicMock()), \
+             patch("cogs.music_cog.make_music_control_view", return_value=MagicMock()):
+            await cog._publish_now_playing(channel, song)
+
+        old_msg.delete.assert_awaited_once()
+        channel.send.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_publish_ignores_not_found_on_delete(self):
+        bot = make_bot()
+        cog = Music(bot)
+        old_msg = MagicMock()
+        old_msg.delete = AsyncMock(side_effect=discord.NotFound(MagicMock(), "not found"))
+        cog._now_playing_messages[123] = old_msg
+
+        channel = MagicMock()
+        channel.guild = MagicMock()
+        channel.guild.id = 123
+        channel.send = AsyncMock(return_value=MagicMock())
+        song = {"title": "Song", "url": "https://example.com"}
+
+        with patch("cogs.music_cog.build_now_playing_embed", return_value=MagicMock()), \
+             patch("cogs.music_cog.make_music_control_view", return_value=MagicMock()):
+            await cog._publish_now_playing(channel, song)
+
+        old_msg.delete.assert_awaited_once()
+        channel.send.assert_awaited_once()
+        assert 123 in cog._now_playing_messages
+
+    @pytest.mark.asyncio
+    async def test_publish_aborts_on_http_exception(self):
+        bot = make_bot()
+        cog = Music(bot)
+        old_msg = MagicMock()
+        old_msg.delete = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "http error"))
+        cog._now_playing_messages[123] = old_msg
+
+        channel = MagicMock()
+        channel.guild = MagicMock()
+        channel.guild.id = 123
+        channel.send = AsyncMock(return_value=MagicMock())
+        song = {"title": "Song", "url": "https://example.com"}
+
+        with patch("cogs.music_cog.build_now_playing_embed", return_value=MagicMock()), \
+             patch("cogs.music_cog.make_music_control_view", return_value=MagicMock()):
+            await cog._publish_now_playing(channel, song)
+
+        old_msg.delete.assert_awaited_once()
+        channel.send.assert_not_awaited()
+        assert 123 not in cog._now_playing_messages
+
+    @pytest.mark.asyncio
+    async def test_publish_uses_lock_per_guild(self):
+        bot = make_bot()
+        cog = Music(bot)
+        channel = MagicMock()
+        channel.guild = MagicMock()
+        channel.guild.id = 456
+        channel.send = AsyncMock(return_value=MagicMock())
+        song = {"title": "Song", "url": "https://example.com"}
+
+        with patch("cogs.music_cog.build_now_playing_embed", return_value=MagicMock()), \
+             patch("cogs.music_cog.make_music_control_view", return_value=MagicMock()):
+            await cog._publish_now_playing(channel, song)
+
+        assert 456 in cog._now_playing_locks
+        assert isinstance(cog._now_playing_locks[456], asyncio.Lock)
