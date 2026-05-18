@@ -381,6 +381,9 @@ class Music(commands.Cog):
                 ctx,
                 embed=build_info_embed("✅ Playlist añadida", f"**{tracks.name}** — {len(tracks.tracks)} canciones añadidas a la cola."),
             )
+            if not player.playing and not player.paused and not player.queue.is_empty:
+                next_track = player.queue.get()
+                await player.play(next_track)
         else:
             track = tracks[0]
             if player.current is not None or player.playing or player.paused or not player.queue.is_empty:
