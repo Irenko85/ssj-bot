@@ -40,6 +40,20 @@ def _track_to_song(track: wavelink.Playable) -> dict:
     }
 
 
+def _is_track_unavailable(exception: dict | str | None) -> bool:
+    """Detecta si la excepción de Wavelink indica que la canción no está disponible."""
+    if not exception:
+        return False
+    msg = exception.get("message", "") if isinstance(exception, dict) else str(exception)
+    msg_lower = str(msg).lower()
+    patterns = [
+        "all clients failed",
+        "this video is not available",
+        "requires login",
+    ]
+    return any(p in msg_lower for p in patterns)
+
+
 class _PlayerStateAdapter:
     """Minimal adapter to satisfy MusicControlView's _state() API."""
     def __init__(self, player: wavelink.Player | None):
@@ -299,11 +313,19 @@ class Music(commands.Cog):
         player = payload.player
         if player is None:
             return
-        logger.error(f"Track exception: {payload.exception}")
+
         channel = self._get_text_channel(player.guild.id)
-        if channel:
-            msg = payload.exception.get("message", "Error desconocido") if isinstance(payload.exception, dict) else str(payload.exception)
-            await channel.send(embed=build_error_embed(f"Error al reproducir la canción: {msg}"))
+
+        if _is_track_unavailable(payload.exception):
+            logger.warning(f"Track unavailable, skipping: {payload.exception}")
+            if channel:
+                await channel.send(embed=build_info_embed("⏭️ Canción saltada", "Canción no disponible, saltando..."))
+        else:
+            logger.error(f"Track exception: {payload.exception}")
+            if channel:
+                msg = payload.exception.get("message", "Error desconocido") if isinstance(payload.exception, dict) else str(payload.exception)
+                await channel.send(embed=build_error_embed(f"Error al reproducir la canción: {msg}"))
+
         if not player.queue.is_empty:
             next_track = player.queue.get()
             await player.play(next_track)
