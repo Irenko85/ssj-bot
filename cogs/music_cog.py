@@ -286,7 +286,20 @@ class Music(commands.Cog):
 
     @commands.Cog.listener()
     async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload) -> None:
-        logger.info(f"Lavalink node connected: {payload.node!r} | resumed={payload.resumed}")
+        if payload.resumed:
+            logger.info(f"Lavalink node reconnected (session resumed): {payload.node!r}")
+            return
+        logger.warning(f"Lavalink node reconnected (new session), disconnecting active players")
+        for player in list(self.bot.voice_clients):
+            if not isinstance(player, wavelink.Player):
+                continue
+            player.queue.clear()
+            await player.disconnect()
+            guild_id = player.guild.id
+            self._text_channels.pop(guild_id, None)
+            getattr(self, "_now_playing_messages", {}).pop(guild_id, None)
+            getattr(self, "_now_playing_locks", {}).pop(guild_id, None)
+            getattr(self, "_np_just_published", set()).discard(guild_id)
 
     @commands.Cog.listener()
     async def on_wavelink_track_start(self, payload: wavelink.TrackStartEventPayload) -> None:
