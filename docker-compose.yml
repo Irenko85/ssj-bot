@@ -8,6 +8,7 @@ services:
       - YOUTUBE_REFRESH_TOKEN
     volumes:
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
+      - ./lavalink/cookies.txt:/opt/Lavalink/cookies.txt:ro
       - lavalink_plugins:/opt/Lavalink/plugins
     networks:
       - bot-network
