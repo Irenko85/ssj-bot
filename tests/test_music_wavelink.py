@@ -257,28 +257,241 @@ class TestVolumeCommand:
         player.set_volume.assert_called_once_with(75)
 
 
-class TestSoundCloudFallback:
+class TestSearch:
     @pytest.mark.asyncio
-    async def test_search_falls_back_to_soundcloud(self):
-        sc_track = MagicMock(spec=wavelink.Playable)
-        sc_track.title = "SC Track"
+    async def test_search_returns_ytm_results_directly(self):
+        ytm_track = MagicMock(spec=wavelink.Playable)
+        ytm_track.title = "YTM Track"
+
         async def mock_search(query, source=None):
             if source == wavelink.TrackSource.YouTubeMusic:
+                return [ytm_track]
+            return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search):
+            result = await Music._search("test query")
+        assert result == [ytm_track]
+
+    @pytest.mark.asyncio
+    async def test_search_falls_back_to_youtube(self):
+        yt_track = MagicMock(spec=wavelink.Playable)
+        yt_track.title = "YT Track"
+
+        async def mock_search(query, source=None):
+            if source == wavelink.TrackSource.YouTubeMusic:
+                return []
+            if source == wavelink.TrackSource.YouTube:
+                return [yt_track]
+            return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search):
+            result = await Music._search("test query")
+        assert result == [yt_track]
+
+    @pytest.mark.asyncio
+    async def test_search_falls_back_to_soundcloud(self):
+        sc_track = MagicMock()
+        sc_track.title = "SC Track"
+        sc_track.uri = "https://soundcloud.com/artist/full-track"
+
+        async def mock_search(query, source=None):
+            if source == wavelink.TrackSource.YouTubeMusic:
+                return []
+            if source == wavelink.TrackSource.YouTube:
                 return []
             if source == wavelink.TrackSource.SoundCloud:
                 return [sc_track]
             return []
+
         with patch("wavelink.Playable.search", side_effect=mock_search):
             result = await Music._search("test query")
         assert result == [sc_track]
 
     @pytest.mark.asyncio
-    async def test_search_returns_none_when_both_fail(self):
+    async def test_search_filters_soundcloud_previews(self):
+        preview_track = MagicMock()
+        preview_track.title = "Preview"
+        preview_track.uri = "https://soundcloud.com/artist/track/preview/123"
+        full_track = MagicMock()
+        full_track.title = "Full"
+        full_track.uri = "https://soundcloud.com/artist/track"
+
         async def mock_search(query, source=None):
+            if source == wavelink.TrackSource.YouTubeMusic:
+                return []
+            if source == wavelink.TrackSource.YouTube:
+                return []
+            if source == wavelink.TrackSource.SoundCloud:
+                return [preview_track, full_track]
             return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search):
+            result = await Music._search("test query")
+        assert result == [full_track]
+
+    @pytest.mark.asyncio
+    async def test_search_returns_none_when_all_soundcloud_are_previews(self):
+        preview_track = MagicMock()
+        preview_track.title = "Preview"
+        preview_track.uri = "https://soundcloud.com/artist/track/preview/123"
+
+        async def mock_search(query, source=None):
+            if source == wavelink.TrackSource.YouTubeMusic:
+                return []
+            if source == wavelink.TrackSource.YouTube:
+                return []
+            if source == wavelink.TrackSource.SoundCloud:
+                return [preview_track]
+            return []
+
         with patch("wavelink.Playable.search", side_effect=mock_search):
             result = await Music._search("test query")
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_search_returns_none_when_all_sources_fail(self):
+        async def mock_search(query, source=None):
+            return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search):
+            result = await Music._search("test query")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_search_soundcloud_playlist_no_previews(self):
+        track1 = MagicMock()
+        track1.uri = "https://soundcloud.com/artist/track1"
+        track2 = MagicMock()
+        track2.uri = "https://soundcloud.com/artist/track2"
+        playlist = MagicMock(spec=wavelink.Playlist)
+        playlist.tracks = [track1, track2]
+        playlist.__len__.return_value = 2
+
+        async def mock_search(query, source=None):
+            if source == wavelink.TrackSource.YouTubeMusic:
+                return []
+            if source == wavelink.TrackSource.YouTube:
+                return []
+            if source == wavelink.TrackSource.SoundCloud:
+                return playlist
+            return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search):
+            result = await Music._search("test query")
+        assert result is playlist
+        assert result.tracks == [track1, track2]
+
+    @pytest.mark.asyncio
+    async def test_search_soundcloud_playlist_all_previews_returns_none(self):
+        track1 = MagicMock()
+        track1.uri = "https://soundcloud.com/artist/track1/preview/123"
+        track2 = MagicMock()
+        track2.uri = "https://soundcloud.com/artist/track2/preview/hls"
+        playlist = MagicMock(spec=wavelink.Playlist)
+        playlist.tracks = [track1, track2]
+        playlist.__len__.return_value = 2
+
+        async def mock_search(query, source=None):
+            if source == wavelink.TrackSource.YouTubeMusic:
+                return []
+            if source == wavelink.TrackSource.YouTube:
+                return []
+            if source == wavelink.TrackSource.SoundCloud:
+                return playlist
+            return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search):
+            result = await Music._search("test query")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_search_soundcloud_playlist_mixed_previews(self):
+        preview_track = MagicMock()
+        preview_track.uri = "https://soundcloud.com/artist/track/preview/123"
+        full_track1 = MagicMock()
+        full_track1.uri = "https://soundcloud.com/artist/track1"
+        full_track2 = MagicMock()
+        full_track2.uri = "https://soundcloud.com/artist/track2"
+        playlist = MagicMock(spec=wavelink.Playlist)
+        playlist.tracks = [preview_track, full_track1, full_track2]
+        playlist.__len__.return_value = 3
+
+        async def mock_search(query, source=None):
+            if source == wavelink.TrackSource.YouTubeMusic:
+                return []
+            if source == wavelink.TrackSource.YouTube:
+                return []
+            if source == wavelink.TrackSource.SoundCloud:
+                return playlist
+            return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search):
+            result = await Music._search("test query")
+        assert result is playlist
+        assert result.tracks == [full_track1, full_track2]
+
+    @pytest.mark.asyncio
+    async def test_search_circuit_breaks_on_ytm(self):
+        ytm_track = MagicMock(spec=wavelink.Playable)
+        ytm_track.title = "YTM Track"
+
+        async def mock_search(query, source=None):
+            if source == wavelink.TrackSource.YouTubeMusic:
+                return [ytm_track]
+            return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search) as mock_search_fn:
+            result = await Music._search("test query")
+
+        assert result == [ytm_track]
+        assert mock_search_fn.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_search_circuit_breaks_on_yt(self):
+        yt_track = MagicMock(spec=wavelink.Playable)
+        yt_track.title = "YT Track"
+
+        async def mock_search(query, source=None):
+            if source == wavelink.TrackSource.YouTubeMusic:
+                return []
+            if source == wavelink.TrackSource.YouTube:
+                return [yt_track]
+            return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search) as mock_search_fn:
+            result = await Music._search("test query")
+
+        assert result == [yt_track]
+        assert mock_search_fn.call_count == 2
+
+    @pytest.mark.parametrize(
+        "uri,should_filter",
+        [
+            ("https://soundcloud.com/artist/track/preview/hls", True),
+            ("https://soundcloud.com/artist/track/preview/123", True),
+            (None, False),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_search_filters_preview_uri_variants(self, uri, should_filter):
+        track = MagicMock()
+        track.title = "Track"
+        track.uri = uri
+
+        async def mock_search(query, source=None):
+            if source in (wavelink.TrackSource.YouTubeMusic, wavelink.TrackSource.YouTube):
+                return []
+            if source == wavelink.TrackSource.SoundCloud:
+                return [track]
+            return []
+
+        with patch("wavelink.Playable.search", side_effect=mock_search):
+            result = await Music._search("test query")
+
+        if should_filter:
+            assert result is None
+        else:
+            assert result == [track]
 
 
 class TestPublishNowPlaying:
