@@ -358,15 +358,33 @@ class Music(commands.Cog):
 
     @staticmethod
     async def _search(query: str) -> list[wavelink.Playable] | wavelink.Playlist | None:
+        # 1. YouTube Music
         tracks: wavelink.Search = await wavelink.Playable.search(
             query, source=wavelink.TrackSource.YouTubeMusic
         )
         if tracks:
             return tracks
+
+        # 2. YouTube (fallback si YTM no tiene resultados)
+        tracks = await wavelink.Playable.search(
+            query, source=wavelink.TrackSource.YouTube
+        )
+        if tracks:
+            return tracks
+
+        # 3. SoundCloud — filtrar previews
         tracks = await wavelink.Playable.search(
             query, source=wavelink.TrackSource.SoundCloud
         )
-        return tracks if tracks else None
+        if tracks:
+            if isinstance(tracks, wavelink.Playlist):
+                tracks.tracks = [t for t in tracks.tracks if "/preview/" not in (t.uri or "")]
+                return tracks if tracks.tracks else None
+            else:
+                full_tracks = [t for t in tracks if "/preview/" not in (t.uri or "")]
+                return full_tracks if full_tracks else None
+
+        return None
 
     # ── Comandos slash ───────────────────────────────────────────────────────
 
