@@ -87,25 +87,7 @@ async def _sync_app_commands():
     before sync(guild=X). Otherwise the per-guild sync registers an
     empty list silently and users see no slash commands.
     """
-    play_cmd = bot.tree.get_command("play")
-    if play_cmd:
-        logger.info("play command params (pre-sync): %s", [p for p in play_cmd._params])
-    else:
-        logger.warning("play command no encontrado en tree antes del sync")
-
     if GUILD_IDS:
-        # Si alguna vez se hizo sync global, limpiamos el registro global
-        # para evitar que definiciones viejas se sigan mostrando en la UI.
-        try:
-            bot.tree.clear_commands(guild=None)
-            synced_global = await bot.tree.sync()
-            logger.info(
-                "Limpieza de comandos globales aplicada: %d comandos globales.",
-                len(synced_global),
-            )
-        except Exception as e:
-            logger.warning("No se pudo limpiar comandos globales: %s", e)
-
         success = 0
         for gid in GUILD_IDS:
             try:
@@ -116,7 +98,6 @@ async def _sync_app_commands():
                 success += 1
             except Exception as e:
                 logger.warning("Sync falló para guild %s: %s", gid, e)
-
         logger.info(
             "Slash commands sincronizados en %d/%d guild(s).",
             success,
