@@ -7,9 +7,11 @@ import math
 import os
 import random
 from contextlib import suppress
+from typing import Optional
 
 import discord
 from discord import app_commands
+from discord.app_commands import Choice
 import wavelink
 from discord.ext import commands
 
@@ -392,9 +394,13 @@ class Music(commands.Cog):
     @commands.hybrid_command(name="play", description="Reproduce una canción o la añade a la cola.")
     @app_commands.describe(
         query="Nombre de la canción, artista o URL",
-        shuffle="Aleatorizar el orden de la playlist",
+        shuffle="Orden de reproducción de la playlist",
     )
-    async def play(self, ctx: commands.Context, query: str, shuffle: bool = False) -> None:
+    @app_commands.choices(shuffle=[
+        Choice(name="🔀 Aleatorizar", value="shuffle"),
+        Choice(name="▶️ En orden", value="normal"),
+    ])
+    async def play(self, ctx: commands.Context, query: str, shuffle: Optional[Choice[str]] = None) -> None:
         if not self._is_lavalink_available():
             await ctx.send(embed=build_error_embed("El sistema de música no está disponible ahora."))
             return
@@ -412,11 +418,12 @@ class Music(commands.Cog):
             return
         if isinstance(tracks, wavelink.Playlist):
             tracks_list = list(tracks.tracks)
-            if shuffle:
+            should_shuffle = shuffle is not None and shuffle.value == "shuffle"
+            if should_shuffle:
                 random.shuffle(tracks_list)
             for track in tracks_list:
                 await player.queue.put_wait(track)
-            shuffle_label = " (aleatorizada 🔀)" if shuffle else ""
+            shuffle_label = " (aleatorizada 🔀)" if should_shuffle else ""
             await self._respond(
                 ctx,
                 embed=build_info_embed(
