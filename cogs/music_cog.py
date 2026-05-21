@@ -9,6 +9,7 @@ import random
 from contextlib import suppress
 
 import discord
+from discord import app_commands
 import wavelink
 from discord.ext import commands
 
@@ -389,7 +390,11 @@ class Music(commands.Cog):
     # ── Comandos slash ───────────────────────────────────────────────────────
 
     @commands.hybrid_command(name="play", description="Reproduce una canción o la añade a la cola.")
-    async def play(self, ctx: commands.Context, *, query: str) -> None:
+    @app_commands.describe(
+        query="Nombre de la canción, artista o URL",
+        shuffle="Aleatorizar el orden de la playlist",
+    )
+    async def play(self, ctx: commands.Context, query: str, shuffle: bool = False) -> None:
         if not self._is_lavalink_available():
             await ctx.send(embed=build_error_embed("El sistema de música no está disponible ahora."))
             return
@@ -406,11 +411,18 @@ class Music(commands.Cog):
             await self._respond(ctx, embed=build_warning_embed("No se encontraron resultados."))
             return
         if isinstance(tracks, wavelink.Playlist):
-            for track in tracks.tracks:
+            tracks_list = list(tracks.tracks)
+            if shuffle:
+                random.shuffle(tracks_list)
+            for track in tracks_list:
                 await player.queue.put_wait(track)
+            shuffle_label = " (aleatorizada 🔀)" if shuffle else ""
             await self._respond(
                 ctx,
-                embed=build_info_embed("✅ Playlist añadida", f"**{tracks.name}** — {len(tracks.tracks)} canciones añadidas a la cola."),
+                embed=build_info_embed(
+                    "✅ Playlist añadida",
+                    f"**{tracks.name}** — {len(tracks_list)} canciones añadidas a la cola{shuffle_label}.",
+                ),
             )
             if not player.playing and not player.paused and not player.queue.is_empty:
                 next_track = player.queue.get()
