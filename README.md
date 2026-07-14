@@ -1,73 +1,73 @@
 # SSJ Bot
 
-Este es el bot de música que uso en Discord. Permite buscar canciones, reproducir playlists y controlar la cola sin tener que salir del canal.
+This is the music bot I use on Discord. It lets us search for songs, play playlists, and manage the queue without leaving the voice channel.
 
-La primera versión reproducía el audio directamente desde Python con `yt-dlp`. Con el tiempo separé esa parte y ahora el bot usa Wavelink para comunicarse con Lavalink, que se encarga de buscar y reproducir el audio. Todo se ejecuta con Docker Compose en mi servidor.
+The first version handled audio directly from Python with `yt-dlp`. Over time, I separated that responsibility: the bot now uses Wavelink to communicate with Lavalink, which handles music searches and playback. I run the whole project on my home server with Docker Compose.
 
-Además de la música, agregué recordatorios personales que se guardan en Supabase. Esa función es opcional: si no se configura, el resto del bot sigue funcionando normalmente.
+I also added personal reminders backed by Supabase. This part is optional, so the music commands still work when reminders are not configured.
 
-## ¿Qué hace?
+## What does it do?
 
-- Busca música en YouTube Music, YouTube y SoundCloud.
-- Reproduce canciones y playlists.
-- Mantiene una cola independiente en cada servidor de Discord.
-- Permite pausar, continuar, saltar, mezclar y quitar canciones de la cola.
-- Muestra la canción actual con botones para controlar la reproducción.
-- Incluye playlists rápidas de Dragon Ball Z y anime.
-- Puede crear, listar y cancelar recordatorios personales.
-- Se ejecuta con Docker usando un contenedor para el bot y otro para Lavalink.
+- Searches YouTube Music, YouTube, and SoundCloud.
+- Plays individual songs and playlists.
+- Keeps a separate queue for each Discord server.
+- Supports pausing, resuming, skipping, shuffling, and removing tracks.
+- Shows the current song with playback controls.
+- Includes shortcuts for my Dragon Ball Z and anime playlists.
+- Can create, list, and cancel personal reminders.
+- Runs with separate Docker containers for the bot and Lavalink.
 
-## Cómo funciona
+## How it works
 
 ```mermaid
 flowchart LR
-    Discord["Discord"] --> Bot["Bot en Python"]
+    Discord["Discord"] --> Bot["Python bot"]
     Bot --> Lavalink["Lavalink"]
-    Lavalink --> Sources["YouTube Music, YouTube y SoundCloud"]
-    Bot -. "recordatorios opcionales" .-> Supabase["Supabase"]
+    Lavalink --> Sources["YouTube Music, YouTube, and SoundCloud"]
+    Bot -. "optional reminders" .-> Supabase["Supabase"]
 ```
 
-Python maneja los comandos, las colas y los mensajes que aparecen en Discord. Lavalink se encarga del audio y se conecta al bot mediante Wavelink.
+Python handles the commands, queues, and messages shown in Discord. Lavalink handles audio and connects to the bot through Wavelink.
 
-## Comandos
+## Commands
 
-### Música
+### Music
 
-| Comando | Para qué sirve |
+| Command | What it does |
 |---|---|
-| `/play <búsqueda o URL>` | Reproduce una canción o la agrega a la cola. También acepta playlists. |
-| `/search <búsqueda>` | Muestra hasta cinco resultados para elegir. |
-| `/nowplaying` | Muestra la canción actual y sus controles. |
-| `/queue` | Muestra la cola de reproducción. |
-| `/skip` | Salta la canción actual. |
-| `/pause` | Pausa la reproducción. |
-| `/resume` | Continúa la reproducción. |
-| `/shuffle` | Mezcla la cola. |
-| `/remove <posición>` | Quita una canción de la cola. |
-| `/volume <0-100>` | Cambia el volumen. |
-| `/stop` | Vacía la cola y desconecta el bot. |
-| `/dbz` | Agrega mi playlist de Dragon Ball Z. |
-| `/anime` | Agrega mi playlist de anime. |
-| `/coin` | Lanza una moneda. |
+| `/play <search or URL>` | Plays a song or adds it to the queue. It also accepts playlists. |
+| `/search <query>` | Shows up to five results to choose from. |
+| `/nowplaying` | Shows the current song and its controls. |
+| `/queue` | Shows the playback queue. |
+| `/skip` | Skips the current song. |
+| `/pause` | Pauses playback. |
+| `/resume` | Resumes playback. |
+| `/shuffle` | Shuffles the queue. |
+| `/remove <position>` | Removes a song from the queue. |
+| `/volume <0-100>` | Changes the volume. |
+| `/stop` | Clears the queue and disconnects the bot. |
+| `/dbz` | Adds my Dragon Ball Z playlist. |
+| `/anime` | Adds my anime playlist. |
+| `/coin` | Flips a coin. |
 
-Los comandos también se pueden ejecutar mencionando al bot, por ejemplo: `@SSJBot play d4vd`.
+Commands can also be run by mentioning the bot, for example: `@SSJBot play d4vd`.
 
-### Recordatorios
+### Reminders
 
-| Comando | Para qué sirve |
+| Command | What it does |
 |---|---|
-| `/remind` | Abre un formulario para crear un recordatorio. |
-| `/reminders` | Muestra los recordatorios pendientes y permite cancelarlos. |
+| `/remind` | Opens a form to create a reminder. |
+| `/reminders` | Shows pending reminders and lets their owner cancel them. |
 
-Las fechas aceptan `hoy`, `mañana` o el formato `dd/mm`. Las horas usan el formato `hh:mm` y se interpretan en `America/Santiago`.
+Dates accept `hoy`, `mañana`, or the `dd/mm` format. Times use `hh:mm` and are interpreted in `America/Santiago`.
 
-## Inicio rápido con Docker
+## Quick start with Docker
 
-Necesitas:
+You need:
 
-- Docker Engine con Docker Compose.
-- Un bot creado en el [Discord Developer Portal](https://discord.com/developers/applications).
-- El intent de contenido de mensajes habilitado para poder usar las menciones como alternativa a los slash commands.
+- Docker Engine with Docker Compose.
+- A bot created in the [Discord Developer Portal](https://discord.com/developers/applications).
+- The Message Content Intent enabled if you want to use mentions as an alternative to slash commands.
 
 ```bash
 git clone https://github.com/Irenko85/ssj-bot.git
@@ -76,46 +76,46 @@ cp .env.example .env
 touch lavalink/cookies.txt
 ```
 
-Edita `.env` y agrega al menos estas variables:
+Edit `.env` and set at least these variables:
 
 ```dotenv
-DISCORD_TOKEN=tu_token
+DISCORD_TOKEN=your_token
 GUILD_IDS=
 LAVALINK_URI=http://lavalink:2333
-LAVALINK_PASSWORD=una_contraseña_interna
+LAVALINK_PASSWORD=an_internal_password
 LOG_LEVEL=INFO
 ```
 
-`GUILD_IDS` acepta uno o más IDs separados por comas. Si lo dejas vacío, Discord registra los comandos globalmente y pueden tardar hasta una hora en aparecer.
+`GUILD_IDS` accepts one or more comma-separated server IDs. If you leave it empty, Discord registers the commands globally and they may take up to an hour to appear.
 
-Después puedes levantar ambos contenedores con:
+Start both containers with:
 
 ```bash
 docker compose up -d --build
 docker compose logs -f
 ```
 
-El archivo `lavalink/cookies.txt` no se sube al repositorio. Puede quedar vacío, pero debe existir para que Docker pueda montarlo. Si YouTube comienza a rechazar solicitudes, puedes reemplazarlo por cookies exportadas en formato Netscape o configurar `YOUTUBE_REFRESH_TOKEN` en `.env`.
+The `lavalink/cookies.txt` file is not committed to the repository. It can be empty, but it must exist so Docker can mount it. If YouTube starts rejecting requests, replace it with cookies exported in Netscape format or set `YOUTUBE_REFRESH_TOKEN` in `.env`.
 
-## Recordatorios opcionales
+## Optional reminders
 
-Para activar los recordatorios también debes configurar:
+To enable reminders, also set:
 
 ```dotenv
-SUPABASE_URL=https://tu-proyecto.supabase.co
-SUPABASE_KEY=tu-anon-key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-key
 REMINDERS_CHANNEL_ID=123456789012345678
 REMINDER_USER_YO_ID=111111111111111111
 REMINDER_USER_ELLA_ID=222222222222222222
 ```
 
-Los IDs de usuario corresponden a las opciones `yo` y `ella` del formulario. Los recordatorios se guardan en una tabla `reminders` de Supabase para poder recuperarlos después de reiniciar el bot.
+The user IDs correspond to the `yo` and `ella` options in the reminder form. Reminders are stored in a Supabase `reminders` table so they can be recovered after the bot restarts.
 
-Si faltan las variables de Supabase o el canal, el módulo se desactiva y los comandos de música siguen disponibles.
+If the Supabase or channel variables are missing, the reminder module is disabled and the music commands remain available.
 
-## Desarrollo local
+## Local development
 
-Se necesita Python 3.12 o una versión más reciente. Para trabajar en el código y ejecutar las pruebas puedes crear un entorno virtual:
+Python 3.12 or newer is required. Create a virtual environment to work on the code and run the tests:
 
 ```bash
 python -m venv .venv
@@ -124,35 +124,35 @@ python -m pip install -r requirements.txt
 python -m pip install -r requirements-dev.txt
 ```
 
-Para ejecutar las pruebas:
+Run the test suite with:
 
 ```bash
 .venv/bin/python -m pytest tests/ -v
 ```
 
-Para probar el bot completo, incluyendo Lavalink, usa `docker compose up -d --build`.
+To test the complete bot, including Lavalink, run `docker compose up -d --build`.
 
-## Estructura del proyecto
+## Project structure
 
 ```text
 .
-├── bot.py                    # Inicio del bot y conexión con Lavalink
+├── bot.py                    # Bot startup and Lavalink connection
 ├── cogs/
-│   ├── music_cog.py          # Reproducción, colas y comandos de música
-│   └── reminders_cog.py      # Creación y entrega de recordatorios
+│   ├── music_cog.py          # Music playback, queues, and commands
+│   └── reminders_cog.py      # Reminder creation and delivery
 ├── utils/
-│   ├── reminders_store.py    # Persistencia de recordatorios en Supabase
-│   └── ui.py                 # Embeds, botones y vistas de Discord
+│   ├── reminders_store.py    # Supabase reminder persistence
+│   └── ui.py                 # Discord embeds, buttons, and views
 ├── lavalink/
-│   └── application.yml       # Configuración del servidor de audio
-├── tests/                    # Pruebas con pytest
+│   └── application.yml       # Audio server configuration
+├── tests/                    # pytest test suite
 ├── Dockerfile
 └── docker-compose.yml
 ```
 
-## Actualización en el servidor
+## Updating the server
 
-El código queda dentro de la imagen del bot, por lo que un `docker compose restart` no aplica los cambios nuevos. Para actualizarlo hay que reconstruir la imagen:
+The source code is copied into the bot image, so `docker compose restart` does not apply new changes. Rebuild the image when updating the deployment:
 
 ```bash
 git pull
