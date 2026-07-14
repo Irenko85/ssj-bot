@@ -1,198 +1,160 @@
 # SSJ Bot
 
-Bot de música para Discord (YouTube via `yt-dlp` + `ffmpeg`). Pensado para correr en un servidor personal con Docker.
+Este es el bot de música que uso en Discord. Permite buscar canciones, reproducir playlists y controlar la cola sin tener que salir del canal.
 
-## Comandos principales
+La primera versión reproducía el audio directamente desde Python con `yt-dlp`. Con el tiempo separé esa parte y ahora el bot usa Wavelink para comunicarse con Lavalink, que se encarga de buscar y reproducir el audio. Todo se ejecuta con Docker Compose en mi servidor.
 
-Todos los comandos son slash commands (`/`). El prefijo `!` ya no funciona.
+Además de la música, agregué recordatorios personales que se guardan en Supabase. Esa función es opcional: si no se configura, el resto del bot sigue funcionando normalmente.
 
-- `/play <url|búsqueda>` - reproduce o agrega a la cola
-- `/skip` - salta la canción actual
-- `/pause` / `/resume`
-- `/queue` - muestra la cola
-- `/shuffle` - mezcla la cola
-- `/clear` - vacía la cola
-- `/rq <pos>` - elimina canción por posición
-- `/stop` - detiene y desconecta
-- `/search <query>` - busca y muestra un menú de selección (visible solo para vos)
-- `/dbz` / `/anime` - playlists temáticas
-- `/coin` - cara o sello
+## ¿Qué hace?
 
-> **Notas:**
-> - Como fallback, podés invocar al bot mencionándolo: `@SSJBot play d4vd`.
-> - Los aliases anteriores (`!p`, `!s`, `!r`, `!q`, `!qc`, `!random`) fueron eliminados.
+- Busca música en YouTube Music, YouTube y SoundCloud.
+- Reproduce canciones y playlists.
+- Mantiene una cola independiente en cada servidor de Discord.
+- Permite pausar, continuar, saltar, mezclar y quitar canciones de la cola.
+- Muestra la canción actual con botones para controlar la reproducción.
+- Incluye playlists rápidas de Dragon Ball Z y anime.
+- Puede crear, listar y cancelar recordatorios personales.
+- Se ejecuta con Docker usando un contenedor para el bot y otro para Lavalink.
 
-## Requisitos
+## Cómo funciona
 
-- Docker y Docker Compose
-- Token de bot de Discord ([Developer Portal](https://discord.com/developers/applications))
-
-## Configuración
-
-1. Copia tu token al archivo `.env`:
-
-   ```dotenv
-   DISCORD_TOKEN=tu_token
-   LOG_LEVEL=INFO
-   # IDs de servidores donde registrar slash commands (separados por coma).
-   # Si está vacío, los comandos se registran globalmente (tarda hasta 1h en aparecer).
-   # Para obtener un ID: activá Modo Desarrollador en Discord → click derecho al server → Copiar ID.
-   GUILD_IDS=
-   # Opcional: cookies de YouTube
-   # YTDL_COOKIES=/app/cookies/cookies.txt
-   ```
-
-2. (Opcional) Si quieres usar cookies para evitar errores de YouTube (`LOGIN_REQUIRED`, throttling, contenido restringido):
-
-   - Exporta tus cookies de YouTube en formato Netscape (extensión [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc))
-   - Guárdalo en `./cookies/cookies.txt`
-   - Descomenta `YTDL_COOKIES=/app/cookies/cookies.txt` en `.env`
-
-   El volumen `./cookies` se monta en `/app/cookies` (read-only). El bot lo copia internamente a un directorio temporal escribible.
-
-## Levantar el bot
-
-```bash
-docker compose up -d --build
+```mermaid
+flowchart LR
+    Discord["Discord"] --> Bot["Bot en Python"]
+    Bot --> Lavalink["Lavalink"]
+    Lavalink --> Sources["YouTube Music, YouTube y SoundCloud"]
+    Bot -. "recordatorios opcionales" .-> Supabase["Supabase"]
 ```
 
-Logs en vivo:
+Python maneja los comandos, las colas y los mensajes que aparecen en Discord. Lavalink se encarga del audio y se conecta al bot mediante Wavelink.
 
-```bash
-docker compose logs -f
-```
+## Comandos
 
-Detener:
+### Música
 
-```bash
-docker compose down
-```
+| Comando | Para qué sirve |
+|---|---|
+| `/play <búsqueda o URL>` | Reproduce una canción o la agrega a la cola. También acepta playlists. |
+| `/search <búsqueda>` | Muestra hasta cinco resultados para elegir. |
+| `/nowplaying` | Muestra la canción actual y sus controles. |
+| `/queue` | Muestra la cola de reproducción. |
+| `/skip` | Salta la canción actual. |
+| `/pause` | Pausa la reproducción. |
+| `/resume` | Continúa la reproducción. |
+| `/shuffle` | Mezcla la cola. |
+| `/remove <posición>` | Quita una canción de la cola. |
+| `/volume <0-100>` | Cambia el volumen. |
+| `/stop` | Vacía la cola y desconecta el bot. |
+| `/dbz` | Agrega mi playlist de Dragon Ball Z. |
+| `/anime` | Agrega mi playlist de anime. |
+| `/coin` | Lanza una moneda. |
 
-## Deploy en home server (Ubuntu Server)
+Los comandos también se pueden ejecutar mencionando al bot, por ejemplo: `@SSJBot play d4vd`.
 
-Guía paso a paso para correr el bot en un servidor Ubuntu con Docker ya instalado.
+### Recordatorios
 
-### 1. Instalar git (si no está instalado)
+| Comando | Para qué sirve |
+|---|---|
+| `/remind` | Abre un formulario para crear un recordatorio. |
+| `/reminders` | Muestra los recordatorios pendientes y permite cancelarlos. |
 
-```bash
-sudo apt update
-sudo apt install -y git
-```
+Las fechas aceptan `hoy`, `mañana` o el formato `dd/mm`. Las horas usan el formato `hh:mm` y se interpretan en `America/Santiago`.
 
-Verificar: `git --version`.
+## Inicio rápido con Docker
 
-### 2. Clonar el repo
+Necesitas:
+
+- Docker Engine con Docker Compose.
+- Un bot creado en el [Discord Developer Portal](https://discord.com/developers/applications).
+- El intent de contenido de mensajes habilitado para poder usar las menciones como alternativa a los slash commands.
 
 ```bash
 git clone https://github.com/Irenko85/ssj-bot.git
 cd ssj-bot
+cp .env.example .env
+touch lavalink/cookies.txt
 ```
 
-### 3. Crear archivo `.env`
-
-```bash
-nano .env
-```
-
-Pegar el siguiente contenido y reemplazar el token por el real:
+Edita `.env` y agrega al menos estas variables:
 
 ```dotenv
-DISCORD_TOKEN=tu_token_real_aqui
-LOG_LEVEL=INFO
-# IDs de servidores donde registrar slash commands (separados por coma).
-# Si está vacío, los comandos se registran globalmente (tarda hasta 1h en aparecer).
-# Para obtener un ID: activá Modo Desarrollador en Discord → click derecho al server → Copiar ID.
+DISCORD_TOKEN=tu_token
 GUILD_IDS=
-# Opcional, descomentar solo si configurás cookies (ver sección
-# "Cookies de YouTube" más abajo)
-# YTDL_COOKIES=/app/cookies/cookies.txt
+LAVALINK_URI=http://lavalink:2333
+LAVALINK_PASSWORD=una_contraseña_interna
+LOG_LEVEL=INFO
 ```
 
-Guardar (Ctrl+O, Enter, Ctrl+X).
+`GUILD_IDS` acepta uno o más IDs separados por comas. Si lo dejas vacío, Discord registra los comandos globalmente y pueden tardar hasta una hora en aparecer.
 
-### 4. Build y arrancar
+Después puedes levantar ambos contenedores con:
 
 ```bash
-sudo docker compose up -d --build
+docker compose up -d --build
+docker compose logs -f
 ```
 
-La primera vez tarda 3-5 minutos (descarga base image, instala ffmpeg y deps de Python).
+El archivo `lavalink/cookies.txt` no se sube al repositorio. Puede quedar vacío, pero debe existir para que Docker pueda montarlo. Si YouTube comienza a rechazar solicitudes, puedes reemplazarlo por cookies exportadas en formato Netscape o configurar `YOUTUBE_REFRESH_TOKEN` en `.env`.
 
-### 5. Verificar que esté corriendo
+## Recordatorios opcionales
+
+Para activar los recordatorios también debes configurar:
+
+```dotenv
+SUPABASE_URL=https://tu-proyecto.supabase.co
+SUPABASE_KEY=tu-anon-key
+REMINDERS_CHANNEL_ID=123456789012345678
+REMINDER_USER_YO_ID=111111111111111111
+REMINDER_USER_ELLA_ID=222222222222222222
+```
+
+Los IDs de usuario corresponden a las opciones `yo` y `ella` del formulario. Los recordatorios se guardan en una tabla `reminders` de Supabase para poder recuperarlos después de reiniciar el bot.
+
+Si faltan las variables de Supabase o el canal, el módulo se desactiva y los comandos de música siguen disponibles.
+
+## Desarrollo local
+
+Se necesita Python 3.12 o una versión más reciente. Para trabajar en el código y ejecutar las pruebas puedes crear un entorno virtual:
 
 ```bash
-sudo docker compose logs -f
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 ```
 
-Buscar en los logs:
-
-```
-ssj-bot: SSJ Bot conectado en N servidor(es).
-```
-
-Salir del log con Ctrl+C (eso no detiene el bot, solo el seguimiento).
-
-### Operación diaria
-
-| Acción | Comando |
-|--------|---------|
-| Ver logs en vivo | `sudo docker compose logs -f` |
-| Ver últimas 200 líneas | `sudo docker compose logs --tail=200` |
-| Reiniciar el bot | `sudo docker compose restart` |
-| Detener | `sudo docker compose down` |
-| Actualizar a última versión | `git pull && sudo docker compose up -d --build` |
-| Estado del container | `sudo docker compose ps` |
-
-> Nota: si tu user está en el grupo `docker` (`sudo usermod -aG docker $USER`), los `sudo` sobran. Requiere logout y login para que tome efecto.
-
-### Cookies de YouTube (opcional)
-
-Si en los logs ves errores tipo `LOGIN_REQUIRED` o `Sign in to confirm your age`, agregá cookies de tu navegador:
-
-1. En tu PC, exportar cookies de youtube.com en formato Netscape con la extensión [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc).
-2. Copiar el archivo al server:
-
-   ```bash
-   scp cookies.txt usuario@server:/ruta/a/ssj-bot/cookies/cookies.txt
-   ```
-
-3. En el server, descomentar la línea `YTDL_COOKIES` en `.env`:
-
-   ```dotenv
-   YTDL_COOKIES=/app/cookies/cookies.txt
-   ```
-
-4. Reiniciar:
-
-   ```bash
-   sudo docker compose restart
-   ```
-
-## Desarrollo local (sin Docker)
+Para ejecutar las pruebas:
 
 ```bash
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# Linux/Mac
-source venv/bin/activate
-
-pip install -r requirements.txt
-python bot.py
+.venv/bin/python -m pytest tests/ -v
 ```
 
-Necesitas `ffmpeg` instalado en el PATH del sistema.
+Para probar el bot completo, incluyendo Lavalink, usa `docker compose up -d --build`.
 
-## Estructura
+## Estructura del proyecto
 
-```
+```text
 .
-├── bot.py              # Entry point + carga de cogs
+├── bot.py                    # Inicio del bot y conexión con Lavalink
 ├── cogs/
-│   └── music_cog.py    # Lógica de música, queue, voice
+│   ├── music_cog.py          # Reproducción, colas y comandos de música
+│   └── reminders_cog.py      # Creación y entrega de recordatorios
 ├── utils/
-│   └── utils.py        # Helpers (playlists, limpieza de URLs)
+│   ├── reminders_store.py    # Persistencia de recordatorios en Supabase
+│   └── ui.py                 # Embeds, botones y vistas de Discord
+├── lavalink/
+│   └── application.yml       # Configuración del servidor de audio
+├── tests/                    # Pruebas con pytest
 ├── Dockerfile
-├── docker-compose.yml
-└── requirements.txt
+└── docker-compose.yml
+```
+
+## Actualización en el servidor
+
+El código queda dentro de la imagen del bot, por lo que un `docker compose restart` no aplica los cambios nuevos. Para actualizarlo hay que reconstruir la imagen:
+
+```bash
+git pull
+docker compose up -d --build
 ```
