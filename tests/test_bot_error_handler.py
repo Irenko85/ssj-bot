@@ -113,6 +113,40 @@ async def test_command_invoke_error_sends_error_embed():
     assert embed.colour == discord.Colour(0x922B21)
 
 
+@pytest.mark.asyncio
+async def test_expired_interaction_error_does_not_send_another_response():
+    """Una interacción expirada no debe provocar un segundo intento de respuesta."""
+    ctx = MagicMock()
+    ctx.send = AsyncMock()
+    response = MagicMock(status=404, reason="Not Found")
+    original = discord.NotFound(
+        response,
+        {"code": 10062, "message": "Unknown interaction"},
+    )
+    error = commands.CommandInvokeError(original)
+
+    await handle_command_error(ctx, error)
+
+    ctx.send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_other_not_found_error_sends_generic_response():
+    """Otros errores NotFound deben conservar el manejo genérico."""
+    ctx = MagicMock()
+    ctx.send = AsyncMock()
+    response = MagicMock(status=404, reason="Not Found")
+    original = discord.NotFound(
+        response,
+        {"code": 10003, "message": "Unknown Channel"},
+    )
+    error = commands.CommandInvokeError(original)
+
+    await handle_command_error(ctx, error)
+
+    ctx.send.assert_awaited_once()
+
+
 # ── CommandOnCooldown (opcional, edge case) ────────────────────────────
 
 

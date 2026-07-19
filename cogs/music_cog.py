@@ -405,10 +405,10 @@ class Music(commands.Cog):
             await ctx.send(embed=build_error_embed("El sistema de música no está disponible ahora."))
             return
         self._set_text_channel(ctx)
+        await ctx.defer()
         player = await self._ensure_connected(ctx)
         if player is None:
             return
-        await ctx.defer()
         if query.startswith("http"):
             tracks: wavelink.Search = await wavelink.Playable.search(query)
         else:

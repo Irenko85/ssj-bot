@@ -100,6 +100,32 @@ class TestTrackToSong:
 
 class TestPlayCommand:
     @pytest.mark.asyncio
+    async def test_play_defers_before_connecting_to_voice(self):
+        bot = make_bot()
+        cog = Music(bot)
+        ctx = make_ctx()
+        player = make_player()
+        player.channel = ctx.author.voice.channel
+        defer_completed = asyncio.Event()
+
+        async def defer():
+            defer_completed.set()
+
+        async def connect(*, cls):
+            assert defer_completed.is_set(), "voice connection started before defer completed"
+            return player
+
+        ctx.defer = AsyncMock(side_effect=defer)
+        ctx.author.voice.channel.connect = AsyncMock(side_effect=connect)
+
+        with patch.object(Music, "_is_lavalink_available", return_value=True), \
+             patch.object(Music, "_search", new_callable=AsyncMock, return_value=None):
+            await cog.play.callback(cog, ctx, query="test song")
+
+        ctx.defer.assert_awaited_once()
+        ctx.author.voice.channel.connect.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_play_no_voice_channel(self):
         bot = make_bot()
         cog = Music(bot)

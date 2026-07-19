@@ -153,6 +153,9 @@ async def handle_command_error(ctx, error):
         exc_info=original,
     )
 
+    if isinstance(original, discord.NotFound) and original.code == 10062:
+        return
+
     if isinstance(error, commands.CommandNotFound):
         return
 
