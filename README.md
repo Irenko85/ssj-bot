@@ -4,8 +4,6 @@ This is the music bot I use on Discord. It lets us search for songs, play playli
 
 The first version handled audio directly from Python with `yt-dlp`. Over time, I separated that responsibility: the bot now uses Wavelink to communicate with Lavalink, which handles music searches and playback. I run the whole project on my home server with Docker Compose.
 
-I also added personal reminders backed by Supabase. This part is optional, so the music commands still work when reminders are not configured.
-
 ## What does it do?
 
 - Searches YouTube Music, YouTube, and SoundCloud.
@@ -14,7 +12,6 @@ I also added personal reminders backed by Supabase. This part is optional, so th
 - Supports pausing, resuming, skipping, shuffling, and removing tracks.
 - Shows the current song with playback controls.
 - Includes shortcuts for my Dragon Ball Z and anime playlists.
-- Can create, list, and cancel personal reminders.
 - Runs with separate Docker containers for the bot and Lavalink.
 
 ## How it works
@@ -24,7 +21,6 @@ flowchart LR
     Discord["Discord"] --> Bot["Python bot"]
     Bot --> Lavalink["Lavalink"]
     Lavalink --> Sources["YouTube Music, YouTube, and SoundCloud"]
-    Bot -. "optional reminders" .-> Supabase["Supabase"]
 ```
 
 Python handles the commands, queues, and messages shown in Discord. Lavalink handles audio and connects to the bot through Wavelink.
@@ -51,15 +47,6 @@ Python handles the commands, queues, and messages shown in Discord. Lavalink han
 | `/coin` | Flips a coin. |
 
 Commands can also be run by mentioning the bot, for example: `@SSJBot play d4vd`.
-
-### Reminders
-
-| Command | What it does |
-|---|---|
-| `/remind` | Opens a form to create a reminder. |
-| `/reminders` | Shows pending reminders and lets their owner cancel them. |
-
-Dates accept `hoy`, `mañana`, or the `dd/mm` format. Times use `hh:mm` and are interpreted in `America/Santiago`.
 
 ## Quick start with Docker
 
@@ -97,22 +84,6 @@ docker compose logs -f
 
 The `lavalink/cookies.txt` file is not committed to the repository. It can be empty, but it must exist so Docker can mount it. If YouTube starts rejecting requests, replace it with cookies exported in Netscape format or set `YOUTUBE_REFRESH_TOKEN` in `.env`.
 
-## Optional reminders
-
-To enable reminders, also set:
-
-```dotenv
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-anon-key
-REMINDERS_CHANNEL_ID=123456789012345678
-REMINDER_USER_YO_ID=111111111111111111
-REMINDER_USER_ELLA_ID=222222222222222222
-```
-
-The user IDs correspond to the `yo` and `ella` options in the reminder form. Reminders are stored in a Supabase `reminders` table so they can be recovered after the bot restarts.
-
-If the Supabase or channel variables are missing, the reminder module is disabled and the music commands remain available.
-
 ## Local development
 
 Python 3.12 or newer is required. Create a virtual environment to work on the code and run the tests:
@@ -138,10 +109,8 @@ To test the complete bot, including Lavalink, run `docker compose up -d --build`
 .
 ├── bot.py                    # Bot startup and Lavalink connection
 ├── cogs/
-│   ├── music_cog.py          # Music playback, queues, and commands
-│   └── reminders_cog.py      # Reminder creation and delivery
+│   └── music_cog.py          # Music playback, queues, and commands
 ├── utils/
-│   ├── reminders_store.py    # Supabase reminder persistence
 │   └── ui.py                 # Discord embeds, buttons, and views
 ├── lavalink/
 │   └── application.yml       # Audio server configuration
